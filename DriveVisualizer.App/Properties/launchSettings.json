@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "DriveVisualizer.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "DriveVisualizer.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DriveVisualizer.App/DriveVisualizer.App.csproj" />
+  <Project Path="DriveVisualizer.Core/DriveVisualizer.Core.csproj" />
+  <Project Path="DriveVisualizer.Harness/DriveVisualizer.Harness.csproj" />
+  <Project Path="DriveVisualizer.Tests/DriveVisualizer.Tests.csproj" />
+</Solution>

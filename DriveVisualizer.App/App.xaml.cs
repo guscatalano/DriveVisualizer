@@ -22,7 +22,11 @@ namespace DriveVisualizer_App;
 public partial class App : Application
 {
     private Window? _window;
-    
+
+    /// <summary>Main window, used for picker interop (InitializeWithWindow).</summary>
+    public static Window? Window { get; private set; }
+
+
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
     /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -39,6 +43,7 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         _window = new MainWindow();
+        Window = _window;
         _window.Activate();
     }
 }

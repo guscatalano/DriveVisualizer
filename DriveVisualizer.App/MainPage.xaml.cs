@@ -1,20 +1,47 @@
+using DriveVisualizer_App.ViewModels;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+using Microsoft.UI.Xaml.Input;
+using Windows.Storage.Pickers;
 
 namespace DriveVisualizer_App;
 
-/// <summary>
-/// The main content page displayed inside the application window.
-/// Add your UI logic, event handlers, and data binding here.
-/// </summary>
 public sealed partial class MainPage : Page
 {
+    public MainViewModel ViewModel { get; }
+
     public MainPage()
     {
+        ViewModel = new MainViewModel(DispatcherQueue);
         InitializeComponent();
+    }
 
-        // TODO: Add your initialization logic here.
+    private async void Browse_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
+        picker.FileTypeFilter.Add("*");
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.Window);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+            return;
+
+        if (!ViewModel.Targets.Contains(folder.Path))
+            ViewModel.Targets.Add(folder.Path);
+        ViewModel.SelectedTarget = folder.Path;
+    }
+
+    private void Chevron_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is NodeRow row)
+            ViewModel.ToggleExpand(row);
+    }
+
+    private void TreeList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is NodeRow row)
+            ViewModel.ToggleExpand(row);
     }
 }

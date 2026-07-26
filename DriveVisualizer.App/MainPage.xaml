@@ -4,15 +4,115 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:DriveVisualizer_App"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:DriveVisualizer_App.ViewModels"
     mc:Ignorable="d">
 
-    <!--
-        This is the main content area of your application.
-        Add your UI elements here — for example, controls, layouts, and data-bound views.
-        Use 'dotnet new winui-page' to create additional pages and navigate to them via
-        the Frame in MainWindow (RootFrame).
-    -->
-    <Grid />
+    <Grid Padding="12,4,12,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,4,0,8">
+            <ComboBox
+                MinWidth="220"
+                IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}"
+                ItemsSource="{x:Bind ViewModel.Targets}"
+                SelectedItem="{x:Bind ViewModel.SelectedTarget, Mode=TwoWay}" />
+            <Button
+                Content="Browse…"
+                Click="Browse_Click"
+                IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
+            <Button
+                Style="{StaticResource AccentButtonStyle}"
+                MinWidth="80"
+                Content="{x:Bind ViewModel.ScanButtonText, Mode=OneWay}"
+                Command="{x:Bind ViewModel.ScanOrStopCommand}" />
+            <ProgressRing
+                Width="20" Height="20"
+                IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
+        </StackPanel>
+
+        <!-- Column headers (widths mirror the item template below) -->
+        <Grid Grid.Row="1" Padding="16,0,24,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="80" />
+                <ColumnDefinition Width="140" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Name" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="1" Text="% of parent" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="2" Text="Size" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="3" Text="Files" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="4" Text="Modified" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
+        </Grid>
+
+        <!-- Directory tree (flattened, virtualized) -->
+        <ListView
+            x:Name="TreeList"
+            Grid.Row="2"
+            SelectionMode="Single"
+            ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}"
+            SelectedItem="{x:Bind ViewModel.SelectedRow, Mode=TwoWay}"
+            DoubleTapped="TreeList_DoubleTapped">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="MinHeight" Value="30" />
+                    <Setter Property="Padding" Value="4,0,12,0" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:NodeRow">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="140" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="{x:Bind Indent}" Spacing="4">
+                            <Button
+                                Width="24" Height="24" Padding="0"
+                                Background="Transparent" BorderThickness="0"
+                                IsHitTestVisible="{x:Bind HasChildren}"
+                                Click="Chevron_Click">
+                                <FontIcon Glyph="{x:Bind ChevronGlyph}" FontSize="10" />
+                            </Button>
+                            <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <FontIcon Glyph="{x:Bind Badge}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <ProgressBar Width="70" Maximum="100" Value="{x:Bind PercentOfParent}" />
+                            <TextBlock Text="{x:Bind PercentText}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="{x:Bind FilesText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="4" Text="{x:Bind ModifiedText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!-- Status bar -->
+        <Grid Grid.Row="3" Padding="4,6,4,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SelectionText, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+    </Grid>
 </Page>

@@ -91,7 +91,7 @@ Run unelevated by default; count access-denied directories and show an info bar:
 ## Milestones
 
 - **M1 — Scan engine (Core + console harness).** ✅ DONE. Parallel Win32 enumeration, correct sizes, junction handling, cancellation, 7 unit tests. Benchmark: full C:\ (1.04M files, 318K dirs, 510 GB) in 25.8 s.
-- **M2 — App shell + directory tree.** Drive/folder picker, scan with progress, virtualized tree-grid with size/% columns and percentage bars, sorting. *Exit: usable "where did my space go" tool even without treemap.*
+- **M2 — App shell + directory tree.** ✅ DONE. Drive/folder picker, scan/stop with live progress, virtualized flattened-tree ListView with %-of-parent bars, size/files/modified columns, expand via chevron or double-click. Verified against a full C:\ scan (17 s warm).
 - **M3 — Treemap.** Squarified layout, Win2D rendering, extension colors, hover/click/zoom, selection sync with tree. *Exit: feels like WinDirStat.*
 - **M4 — File types panel + actions.** Extension stats, legend-driven highlighting, open/reveal/recycle/delete with re-aggregation.
 - **M5 — Polish.** Cushion shading, settings (colors, exclusions, treemap style), dark/light theme, remembered window state, skipped-items report, elevation relaunch.

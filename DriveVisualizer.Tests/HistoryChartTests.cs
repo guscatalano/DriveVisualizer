@@ -40,6 +40,27 @@ public sealed class HistoryChartTests
         Assert.Contains("Per day", html);
         Assert.Contains("+", html);             // day-over-day delta present
         Assert.Contains("prefers-color-scheme: dark", html);
+        Assert.Contains("By category, per day", html);
+        Assert.Contains("What changed each day", html);
+    }
+
+    [Fact]
+    public void DailyChangesListFolderMovers()
+    {
+        var day1 = Snap(new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc), 1000, 0);
+        day1.Directories.Add(new SnapshotDir { Name = @"C:\x", ParentIndex = -1, AllocatedSize = 1000 });
+        day1.Directories.Add(new SnapshotDir { Name = "media", ParentIndex = 0, AllocatedSize = 1000 });
+
+        var day2 = Snap(new DateTime(2026, 7, 26, 12, 0, 0, DateTimeKind.Utc), 5000, 0);
+        day2.Directories.Add(new SnapshotDir { Name = @"C:\x", ParentIndex = -1, AllocatedSize = 5000 });
+        day2.Directories.Add(new SnapshotDir { Name = "media", ParentIndex = 0, AllocatedSize = 5000 });
+
+        string html = HistoryChart.BuildHtml([day1, day2]);
+
+        Assert.Contains("What changed each day", html);
+        Assert.Contains(@"C:\x\media", html);   // the mover is named with its path
+        Assert.Contains("Jul 25", html);
+        Assert.Contains("Jul 26", html);
     }
 
     [Fact]

@@ -31,6 +31,18 @@ jobs:
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
 
+      - name: Build Store upload package (.msixupload)
+        run: >
+          dotnet build DriveVisualizer.App -c Release -p:Platform=x64
+          -p:GenerateAppxPackageOnBuild=true
+          -p:AppxPackageDir=${{ github.workspace }}\artifacts\store\
+          -p:UapAppxPackageBuildMode=StoreUpload
+          -p:AppxBundle=Never
+          -p:AppxPackageSigningEnabled=false
+          -p:AppxSymbolPackageEnabled=false
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
+
       - name: Publish self-contained (for MSI)
         run: >
           dotnet publish DriveVisualizer.App -c Release -r win-x64 --self-contained
@@ -55,4 +67,11 @@ jobs:
         with:
           name: DriveVisualizer-msi
           path: artifacts/msi/DriveVisualizer.msi
+          if-no-files-found: error
+
+      - name: Upload Store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DriveVisualizer-store-upload
+          path: artifacts/store/**/*.msixupload
           if-no-files-found: error

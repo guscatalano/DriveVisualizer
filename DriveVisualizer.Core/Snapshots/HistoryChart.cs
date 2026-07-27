@@ -35,12 +35,14 @@ public static class HistoryChart
                 color-scheme: light dark;
                 --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e;
                 --grid: #e1e0d9; --border: rgba(11,11,11,.10);
+                --pos: #b91c1c; --neg: #006300;
                 {{catVarsLight}}
               }
               @media (prefers-color-scheme: dark) {
                 :root {
                   --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7;
                   --grid: #2c2c2a; --border: rgba(255,255,255,.10);
+                  --pos: #e66767; --neg: #0ca30c;
                   {{catVarsDark}}
                 }
               }
@@ -55,6 +57,7 @@ public static class HistoryChart
               th, td { text-align: right; padding: 6px 10px; border-top: 1px solid var(--grid); font-variant-numeric: tabular-nums; font-size: 13px; }
               th:first-child, td:first-child { text-align: left; }
               thead th { border-top: none; font-size: 12px; color: var(--ink2); }
+              .pos { color: var(--pos); } .neg { color: var(--neg); }
               @media print { body { background: #fff; color: #0b0b0b; } }
             </style></head><body><div class="page">
             """);
@@ -64,6 +67,8 @@ public static class HistoryChart
         AppendChart(sb, ordered);
         AppendLegend(sb, ordered);
         AppendTable(sb, ordered);
+        AppendCategoryBreakdown(sb, ordered);
+        AppendDailyChanges(sb, ordered);
 
         sb.Append("<p class=\"muted\" style=\"margin-top:24px;font-size:12px\">One snapshot per day is kept while scans run with auto-save on.</p>");
         sb.Append("</div></body></html>");
@@ -145,6 +150,98 @@ public static class HistoryChart
                       $"<td>{snap.TotalFiles:N0}</td></tr>");
         }
         sb.Append("</tbody></table>");
+    }
+
+    /// <summary>Rows = days, columns = categories in use — the per-day composition.</summary>
+    private static void AppendCategoryBreakdown(StringBuilder sb, List<ScanSnapshot> ordered)
+    {
+        var used = new bool[FileClassification.CategoryCount];
+        foreach (var s in ordered)
+            for (int c = 0; c < s.CategoryBytes.Length && c < used.Length; c++)
+                used[c] |= s.CategoryBytes[c] > 0;
+
+        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">By category, per day</h2><table><thead><tr><th>Date</th>");
+        for (int c = 0; c < used.Length; c++)
+            if (used[c])
+                sb.Append($"<th><span class=\"swatch\" style=\"display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cat{c});margin-right:4px\"></span>{WebUtility.HtmlEncode(FileClassification.DisplayNames[c])}</th>");
+        sb.Append("</tr></thead><tbody>");
+
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var snap = ordered[i];
+            sb.Append($"<tr><td>{snap.TimestampUtc.ToLocalTime():yyyy-MM-dd}</td>");
+            for (int c = 0; c < used.Length; c++)
+            {
+                if (!used[c])
+                    continue;
+                long bytes = c < snap.CategoryBytes.Length ? snap.CategoryBytes[c] : 0;
+                long prev = i > 0 && c < ordered[i - 1].CategoryBytes.Length ? ordered[i - 1].CategoryBytes[c] : bytes;
+                long delta = bytes - prev;
+                string deltaHtml = i == 0 || delta == 0
+                    ? ""
+                    : $"<br><span class=\"{(delta > 0 ? "pos" : "neg")}\" style=\"font-size:11px\">{(delta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(delta))}</span>";
+                sb.Append($"<td>{ByteFormatter.Format(bytes)}{deltaHtml}</td>");
+            }
+            sb.Append("</tr>");
+        }
+        sb.Append("</tbody></table>");
+    }
+
+    /// <summary>For each consecutive day pair, the folders that moved the most.</summary>
+    private static void AppendDailyChanges(StringBuilder sb, List<ScanSnapshot> ordered)
+    {
+        const int maxTransitions = 14;
+        int start = Math.Max(1, ordered.Count - maxTransitions);
+        if (ordered.Count < 2)
+            return;
+
+        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">What changed each day</h2>");
+
+        for (int i = start; i < ordered.Count; i++)
+        {
+            var before = ordered[i - 1];
+            var after = ordered[i];
+            long totalDelta = after.TotalAllocated - before.TotalAllocated;
+
+            var beforePaths = before.BuildDirectoryPaths();
+            var beforeByPath = new Dictionary<string, long>(before.Directories.Count, StringComparer.OrdinalIgnoreCase);
+            for (int d = 0; d < before.Directories.Count; d++)
+                beforeByPath[beforePaths[d]] = before.Directories[d].AllocatedSize;
+
+            var afterPaths = after.BuildDirectoryPaths();
+            var deltas = new List<(string Path, long Delta)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int d = 0; d < after.Directories.Count; d++)
+            {
+                seen.Add(afterPaths[d]);
+                long deltaBytes = after.Directories[d].AllocatedSize -
+                    (beforeByPath.TryGetValue(afterPaths[d], out long b) ? b : 0);
+                if (deltaBytes != 0)
+                    deltas.Add((afterPaths[d], deltaBytes));
+            }
+            for (int d = 0; d < before.Directories.Count; d++)
+                if (!seen.Contains(beforePaths[d]) && before.Directories[d].AllocatedSize > 0)
+                    deltas.Add((beforePaths[d] + "  (removed)", -before.Directories[d].AllocatedSize));
+
+            string totalText = totalDelta == 0 ? "no net change"
+                : $"<span class=\"{(totalDelta > 0 ? "pos" : "neg")}\">{(totalDelta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(totalDelta))}</span>";
+            sb.Append($"<h3 style=\"font-size:13px;margin:16px 0 4px\" class=\"muted\">{before.TimestampUtc.ToLocalTime():MMM d} → {after.TimestampUtc.ToLocalTime():MMM d} · {totalText}</h3>");
+
+            var movers = deltas
+                .OrderByDescending(x => Math.Abs(x.Delta))
+                .Take(6)
+                .ToList();
+            if (movers.Count == 0)
+            {
+                sb.Append("<div class=\"muted\" style=\"font-size:12px\">No folder-level changes.</div>");
+                continue;
+            }
+            sb.Append("<table><tbody>");
+            foreach (var (path, deltaBytes) in movers)
+                sb.Append($"<tr><td style=\"text-align:left;word-break:break-all\">{WebUtility.HtmlEncode(path)}</td>" +
+                          $"<td style=\"white-space:nowrap\" class=\"{(deltaBytes > 0 ? "pos" : "neg")}\">{(deltaBytes > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(deltaBytes))}</td></tr>");
+            sb.Append("</tbody></table>");
+        }
     }
 
     private static string F(float v) => v.ToString("F1", CultureInfo.InvariantCulture);

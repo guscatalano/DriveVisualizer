@@ -9,14 +9,14 @@
   IgnorableNamespaces="uap rescap systemai">
 
   <Identity
-    Name="251ADE8A-D25B-4CCD-BE6D-74EC1E11460F"
-    Publisher="CN=GusCatalano"
+    Name="GusCatalano.DriveVisualizer"
+    Publisher="CN=119E0257-3B74-437C-A728-AC7C50256853"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="251ADE8A-D25B-4CCD-BE6D-74EC1E11460F" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>DriveVisualizer.App</DisplayName>
+    <DisplayName>DriveVisualizer</DisplayName>
     <PublisherDisplayName>Gus Catalano</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -35,8 +35,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="DriveVisualizer.App"
-        Description="DriveVisualizer.App"
+        DisplayName="DriveVisualizer"
+        Description="See what's eating your disk: scan, map, clean up."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

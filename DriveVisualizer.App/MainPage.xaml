@@ -70,6 +70,15 @@
                 Width="20" Height="20"
                 IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
             <AppBarSeparator />
+            <DropDownButton x:Name="ViewButton" Content="Treemap">
+                <DropDownButton.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                        <ToggleMenuFlyoutItem x:Name="ViewTreemapItem" Text="Treemap" Tag="0" Click="ViewMode_Click" />
+                        <ToggleMenuFlyoutItem x:Name="ViewSunburstItem" Text="Sunburst" Tag="1" Click="ViewMode_Click" />
+                        <ToggleMenuFlyoutItem x:Name="ViewIcicleItem" Text="Icicle" Tag="2" Click="ViewMode_Click" />
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
             <Button x:Name="LayoutToggleButton" Click="LayoutToggle_Click">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon x:Name="LayoutToggleIcon" Glyph="" FontSize="14" />

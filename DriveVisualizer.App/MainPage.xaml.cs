@@ -20,9 +20,35 @@ public sealed partial class MainPage : Page
 {
     public MainViewModel ViewModel { get; }
 
+    private enum VizMode { Treemap = 0, Sunburst = 1, Icicle = 2 }
+
     private readonly DispatcherQueueTimer _resizeTimer;
     private readonly DispatcherQueueTimer _liveMapTimer;
+    private VizMode _vizMode;
     private TreemapResult? _treemap;
+    private List<SunburstArc>? _sunburst;
+    private List<IcicleRect>? _icicle;
+    private Vector2 _sunCenter;
+    private float _sunR0, _sunRing;
+    private const int SunMaxDepth = 5;
+    private float _icicleRowH = 52f;
+    private Dictionary<FsNode, FileCategory>? _dominant;
+
+    /// <summary>Folder tint: its dominant content category, blended toward the surface.</summary>
+    private Color DirFill(FsNode dir, int depth)
+    {
+        if (_dominant is { } dom && dom.TryGetValue(dir, out var cat))
+        {
+            var c = FileCategories.ColorOf(cat);
+            float mix = 0.62f;
+            return Color.FromArgb(255,
+                (byte)(26 + (c.R - 26) * mix),
+                (byte)(26 + (c.G - 26) * mix),
+                (byte)(25 + (c.B - 25) * mix));
+        }
+        byte g = (byte)(52 + depth * 8);
+        return Color.FromArgb(255, g, g, (byte)(g - 2));
+    }
     private FsNode? _treemapRoot;
     private FsNode? _hoverNode;
     private int _layoutVersion;
@@ -64,6 +90,8 @@ public sealed partial class MainPage : Page
         AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
         ByteFormatter.Detail = (SizeDetail)Math.Clamp(Services.AppSettings.SizeDetail, 0, 2);
         SizeDetailCombo.SelectedIndex = (int)ByteFormatter.Detail;
+        _vizMode = (VizMode)Math.Clamp(Services.AppSettings.VizMode, 0, 2);
+        UpdateViewButton();
         _sideBySide = Services.AppSettings.SideBySideLayout;
         if (_sideBySide)
             ApplyLayout();
@@ -86,6 +114,7 @@ public sealed partial class MainPage : Page
             if (e.PropertyName == nameof(MainViewModel.ScanRoot))
             {
                 _treemapRoot = ViewModel.ScanRoot;
+                _dominant = null; // folder tints must be recomputed for the fresh tree
                 UpdateZoomBar();
                 RecomputeTreemap();
             }
@@ -94,6 +123,7 @@ public sealed partial class MainPage : Page
                 if (ViewModel.LiveRoot is { } live)
                 {
                     _treemapRoot = live;
+                    _dominant = null;
                     UpdateZoomBar();
                     RecomputeTreemap();
                     _liveMapTimer.Start();
@@ -108,6 +138,7 @@ public sealed partial class MainPage : Page
                 // After a delete/compress the zoom root may no longer be attached.
                 if (!IsAttachedToScanRoot(_treemapRoot))
                     _treemapRoot = ViewModel.ScanRoot;
+                _dominant = null;
                 UpdateZoomBar();
                 RecomputeTreemap();
             }
@@ -149,6 +180,27 @@ public sealed partial class MainPage : Page
         {
             ViewModel.StatusText = $"Could not open folder picker: {ex.Message}";
         }
+    }
+
+    // ---------- View mode ----------
+
+    private void ViewMode_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is string tag && int.TryParse(tag, out int mode))
+        {
+            _vizMode = (VizMode)Math.Clamp(mode, 0, 2);
+            Services.AppSettings.VizMode = (int)_vizMode;
+            UpdateViewButton();
+            RecomputeTreemap();
+        }
+    }
+
+    private void UpdateViewButton()
+    {
+        ViewButton.Content = _vizMode.ToString();
+        ViewTreemapItem.IsChecked = _vizMode == VizMode.Treemap;
+        ViewSunburstItem.IsChecked = _vizMode == VizMode.Sunburst;
+        ViewIcicleItem.IsChecked = _vizMode == VizMode.Icicle;
     }
 
     // ---------- Layout: bottom / side-by-side ----------
@@ -766,14 +818,48 @@ public sealed partial class MainPage : Page
         if (root is null || w <= 1 || h <= 1)
         {
             _treemap = null;
+            _sunburst = null;
+            _icicle = null;
             TreemapCanvas.Invalidate();
             return;
         }
 
-        var result = await Task.Run(() => TreemapLayout.Compute(root, w, h));
-        if (version != _layoutVersion)
-            return; // superseded by a newer layout request
-        _treemap = result;
+        switch (_vizMode)
+        {
+            case VizMode.Sunburst:
+            {
+                var scanRoot = ViewModel.ScanRoot ?? ViewModel.LiveRoot;
+                var (arcs, dom) = await Task.Run(() =>
+                    (SunburstLayout.Compute(root, SunMaxDepth),
+                     _dominant ?? (scanRoot is null ? null : DominantCategories.Compute(scanRoot))));
+                if (version != _layoutVersion)
+                    return;
+                _sunburst = arcs;
+                _dominant ??= dom;
+                break;
+            }
+            case VizMode.Icicle:
+            {
+                int rows = Math.Clamp((int)(h / 52f), 3, 8);
+                var scanRoot = ViewModel.ScanRoot ?? ViewModel.LiveRoot;
+                var (rects, dom) = await Task.Run(() =>
+                    (IcicleLayout.Compute(root, rows),
+                     _dominant ?? (scanRoot is null ? null : DominantCategories.Compute(scanRoot))));
+                if (version != _layoutVersion)
+                    return;
+                _icicle = rects;
+                _dominant ??= dom;
+                break;
+            }
+            default:
+            {
+                var result = await Task.Run(() => TreemapLayout.Compute(root, w, h));
+                if (version != _layoutVersion)
+                    return; // superseded by a newer layout request
+                _treemap = result;
+                break;
+            }
+        }
         TreemapCanvas.Invalidate();
     }
 
@@ -783,6 +869,17 @@ public sealed partial class MainPage : Page
 
         // Chart surface (dark, matches the validated dark palette steps).
         ds.Clear(Color.FromArgb(255, 26, 26, 25));
+
+        if (_vizMode == VizMode.Sunburst)
+        {
+            DrawSunburst(sender, ds);
+            return;
+        }
+        if (_vizMode == VizMode.Icicle)
+        {
+            DrawIcicle(ds);
+            return;
+        }
 
         if (_treemap is not { } treemap || treemap.Tiles.Count == 0)
         {
@@ -896,6 +993,178 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private void DrawSunburst(CanvasControl sender, Microsoft.Graphics.Canvas.CanvasDrawingSession ds)
+    {
+        if (_sunburst is not { Count: > 0 } arcs || _treemapRoot is not { } root)
+        {
+            ds.DrawText("Scan a drive to see the sunburst", 12, 12, Color.FromArgb(255, 137, 135, 129));
+            return;
+        }
+
+        float w = (float)TreemapCanvas.ActualWidth, h = (float)TreemapCanvas.ActualHeight;
+        _sunCenter = new Vector2(w / 2f, h / 2f);
+        float maxR = Math.Min(w, h) / 2f - 8f;
+        _sunR0 = Math.Max(34f, maxR * 0.16f);
+        _sunRing = (maxR - _sunR0) / SunMaxDepth;
+
+        var surface = Color.FromArgb(255, 26, 26, 25);
+        var selected = ViewModel.SelectedRow?.Node;
+        Microsoft.Graphics.Canvas.Geometry.CanvasGeometry? selectedGeo = null;
+
+        foreach (var arc in arcs)
+        {
+            float rIn = _sunR0 + (arc.Depth - 1) * _sunRing;
+            float rOut = rIn + _sunRing - 2f;
+            var geo = BuildArcGeometry(sender, _sunCenter, rIn, rOut, arc.StartAngle, arc.SweepAngle);
+
+            Color fill;
+            if (arc.Node.IsDirectory)
+            {
+                fill = DirFill(arc.Node, arc.Depth);
+            }
+            else if (IsGhosted(arc.Node))
+            {
+                var c = FileCategories.TileColor(arc.Node.Name);
+                fill = Color.FromArgb(255,
+                    (byte)(26 + c.R * 45 / 255), (byte)(26 + c.G * 45 / 255), (byte)(25 + c.B * 45 / 255));
+            }
+            else
+            {
+                fill = FileCategories.TileColor(arc.Node.Name);
+            }
+
+            ds.FillGeometry(geo, fill);
+            ds.DrawGeometry(geo, surface, 1.5f);
+
+            if (ReferenceEquals(arc.Node, selected))
+                selectedGeo = geo;
+            else
+                geo.Dispose();
+        }
+
+        if (selectedGeo is not null)
+        {
+            ds.DrawGeometry(selectedGeo, Colors.White, 2.5f);
+            selectedGeo.Dispose();
+        }
+
+        // Labels on arcs long enough to carry them.
+        foreach (var arc in arcs)
+        {
+            float rMid = _sunR0 + (arc.Depth - 0.5f) * _sunRing;
+            if (arc.SweepAngle * rMid < 56f)
+                continue;
+            float mid = arc.StartAngle + arc.SweepAngle / 2f;
+            var pos = _sunCenter + rMid * new Vector2(MathF.Cos(mid), MathF.Sin(mid));
+            using var layout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(
+                ds, arc.Node.Name, DirLabelFormat, arc.SweepAngle * rMid, 18f);
+            float tw = (float)layout.LayoutBounds.Width;
+            ds.DrawTextLayout(layout, pos.X - tw / 2f + 1, pos.Y - 8f + 1, Color.FromArgb(170, 0, 0, 0));
+            ds.DrawTextLayout(layout, pos.X - tw / 2f, pos.Y - 8f, Color.FromArgb(240, 255, 255, 255));
+        }
+
+        // Center disc: current root, size, and (when zoomed) a hint that it goes up.
+        ds.FillCircle(_sunCenter, _sunR0 - 3f, Color.FromArgb(255, 38, 38, 36));
+        ds.DrawCircle(_sunCenter, _sunR0 - 3f, Color.FromArgb(255, 74, 74, 71), 1f);
+        string rootName = Path.GetFileName(root.Name.TrimEnd('\\'));
+        if (string.IsNullOrEmpty(rootName))
+            rootName = root.Name;
+        using (var nameLayout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(ds, rootName, DirLabelFormat, _sunR0 * 1.7f, 20f))
+        {
+            float tw = (float)nameLayout.LayoutBounds.Width;
+            ds.DrawTextLayout(nameLayout, _sunCenter.X - tw / 2f, _sunCenter.Y - 18f, Colors.White);
+        }
+        string sizeText = ByteFormatter.Format(root.AllocatedSize);
+        using (var sizeLayout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(ds, sizeText, DirLabelFormat, _sunR0 * 1.9f, 20f))
+        {
+            float tw = (float)sizeLayout.LayoutBounds.Width;
+            ds.DrawTextLayout(sizeLayout, _sunCenter.X - tw / 2f, _sunCenter.Y + 1f, Color.FromArgb(255, 195, 194, 183));
+        }
+        if (ZoomBar.Visibility == Visibility.Visible)
+        {
+            using var upLayout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(ds, "click: up", DirLabelFormat, _sunR0 * 1.9f, 20f);
+            float tw = (float)upLayout.LayoutBounds.Width;
+            ds.DrawTextLayout(upLayout, _sunCenter.X - tw / 2f, _sunCenter.Y + 18f, Color.FromArgb(255, 137, 135, 129));
+        }
+    }
+
+    private static Microsoft.Graphics.Canvas.Geometry.CanvasGeometry BuildArcGeometry(
+        CanvasControl sender, Vector2 center, float rIn, float rOut, float start, float sweep)
+    {
+        using var pb = new Microsoft.Graphics.Canvas.Geometry.CanvasPathBuilder(sender);
+        var p0 = center + rIn * new Vector2(MathF.Cos(start), MathF.Sin(start));
+        pb.BeginFigure(p0);
+        pb.AddArc(center, rIn, rIn, start, sweep);
+        float end = start + sweep;
+        pb.AddLine(center + rOut * new Vector2(MathF.Cos(end), MathF.Sin(end)));
+        pb.AddArc(center, rOut, rOut, end, -sweep);
+        pb.EndFigure(Microsoft.Graphics.Canvas.Geometry.CanvasFigureLoop.Closed);
+        return Microsoft.Graphics.Canvas.Geometry.CanvasGeometry.CreatePath(pb);
+    }
+
+    private void DrawIcicle(Microsoft.Graphics.Canvas.CanvasDrawingSession ds)
+    {
+        if (_icicle is not { Count: > 0 } rects)
+        {
+            ds.DrawText("Scan a drive to see the icicle view", 12, 12, Color.FromArgb(255, 137, 135, 129));
+            return;
+        }
+
+        float w = (float)TreemapCanvas.ActualWidth, h = (float)TreemapCanvas.ActualHeight;
+        int depthCount = rects.Max(r => r.Depth) + 1;
+        _icicleRowH = Math.Min(64f, (h - 2f) / depthCount);
+        var selected = ViewModel.SelectedRow?.Node;
+        var surface = Color.FromArgb(255, 26, 26, 25);
+        RectangleF? selectedRect = null;
+
+        foreach (var rect in rects)
+        {
+            float x = rect.X0 * w;
+            float width = (rect.X1 - rect.X0) * w;
+            float y = rect.Depth * _icicleRowH;
+            var pixel = new RectangleF(x, y, Math.Max(1f, width - 1.5f), _icicleRowH - 3f);
+
+            Color fill;
+            if (rect.Node.IsDirectory)
+            {
+                fill = DirFill(rect.Node, rect.Depth);
+            }
+            else if (IsGhosted(rect.Node))
+            {
+                var c = FileCategories.TileColor(rect.Node.Name);
+                fill = Color.FromArgb(255,
+                    (byte)(26 + c.R * 45 / 255), (byte)(26 + c.G * 45 / 255), (byte)(25 + c.B * 45 / 255));
+            }
+            else
+            {
+                fill = FileCategories.TileColor(rect.Node.Name);
+            }
+
+            ds.FillRoundedRectangle(pixel.X, pixel.Y, pixel.Width, pixel.Height, 3f, 3f, fill);
+            ds.DrawRoundedRectangle(pixel.X, pixel.Y, pixel.Width, pixel.Height, 3f, 3f, surface, 1f);
+
+            if (ReferenceEquals(rect.Node, selected))
+                selectedRect = pixel;
+
+            if (pixel.Width > 64f)
+            {
+                using var clip = ds.CreateLayer(1f, new Windows.Foundation.Rect(pixel.X, pixel.Y, pixel.Width - 4, pixel.Height));
+                ds.DrawText(rect.Node.Name, pixel.X + 7f, pixel.Y + 4f, Colors.White, DirLabelFormat);
+                if (_icicleRowH >= 42f)
+                    ds.DrawText(ByteFormatter.Format(rect.Node.AllocatedSize), pixel.X + 7f, pixel.Y + 21f,
+                        Color.FromArgb(200, 255, 255, 255), DirLabelFormat);
+            }
+        }
+
+        if (selectedRect is { } sr)
+            ds.DrawRoundedRectangle(sr.X, sr.Y, sr.Width, sr.Height, 3f, 3f, Colors.White, 2.5f);
+    }
+
+    private bool IsGhosted(FsNode node) =>
+        !node.IsDirectory &&
+        (!ViewModel.IsCategoryEnabled(FileCategories.Classify(node.Name)) ||
+         (ViewModel.CleanupCandidatesOnly && !node.Flags.HasFlag(NodeFlags.CleanupCandidate)));
+
     private Tile? HitTest(Windows.Foundation.Point p)
     {
         if (_treemap is not { } treemap)
@@ -906,11 +1175,51 @@ public sealed partial class MainPage : Page
         return null;
     }
 
+    /// <summary>Mode-aware hit test: node under the pointer plus whether it's an aggregate tile.</summary>
+    private (FsNode Node, bool IsAggregate)? HitNode(Windows.Foundation.Point p)
+    {
+        switch (_vizMode)
+        {
+            case VizMode.Sunburst:
+            {
+                if (_sunburst is not { } arcs || _sunRing <= 0)
+                    return null;
+                float dx = (float)p.X - _sunCenter.X, dy = (float)p.Y - _sunCenter.Y;
+                float r = MathF.Sqrt(dx * dx + dy * dy);
+                if (r < _sunR0)
+                    return null;
+                int depth = (int)((r - _sunR0) / _sunRing) + 1;
+                if (depth > SunMaxDepth)
+                    return null;
+                float angle = MathF.Atan2(dy, dx);
+                while (angle < -MathF.PI / 2f)
+                    angle += MathF.Tau;
+                foreach (var arc in arcs)
+                    if (arc.Depth == depth && angle >= arc.StartAngle && angle < arc.StartAngle + arc.SweepAngle)
+                        return (arc.Node, false);
+                return null;
+            }
+            case VizMode.Icicle:
+            {
+                if (_icicle is not { } rects || _icicleRowH <= 0)
+                    return null;
+                int depth = (int)(p.Y / _icicleRowH);
+                float x = (float)(p.X / TreemapCanvas.ActualWidth);
+                foreach (var rect in rects)
+                    if (rect.Depth == depth && x >= rect.X0 && x < rect.X1)
+                        return (rect.Node, false);
+                return null;
+            }
+            default:
+                return HitTest(p) is { } tile ? (tile.Node, tile.IsAggregate) : null;
+        }
+    }
+
     private void TreemapCanvas_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
         var pos = e.GetCurrentPoint(TreemapCanvas).Position;
-        var tile = HitTest(pos);
-        var node = tile?.Node;
+        var hit = HitNode(pos);
+        var node = hit?.Node;
 
         if (node is null)
         {
@@ -925,7 +1234,7 @@ public sealed partial class MainPage : Page
             string category = node.IsDirectory
                 ? "folder"
                 : FileCategories.NameOf(FileCategories.Classify(node.Name));
-            HoverTipText.Text = tile!.Value.IsAggregate
+            HoverTipText.Text = hit!.Value.IsAggregate
                 ? $"{node.GetFullPath()}  ·  small items  ·  {ByteFormatter.Format(node.AllocatedSize)}"
                 : $"{node.GetFullPath()}  ·  {category}  ·  {ByteFormatter.Format(node.AllocatedSize)}";
         }
@@ -946,7 +1255,19 @@ public sealed partial class MainPage : Page
     private void TreemapCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(TreemapCanvas);
-        if (HitTest(point.Position)?.Node is not { } node)
+
+        // Sunburst center disc acts as "go up one level" when zoomed.
+        if (_vizMode == VizMode.Sunburst && ZoomBar.Visibility == Visibility.Visible)
+        {
+            float dx = (float)point.Position.X - _sunCenter.X, dy = (float)point.Position.Y - _sunCenter.Y;
+            if (MathF.Sqrt(dx * dx + dy * dy) < _sunR0)
+            {
+                ZoomOutOneLevel();
+                return;
+            }
+        }
+
+        if (HitNode(point.Position)?.Node is not { } node)
             return;
 
         ViewModel.SelectNode(node);
@@ -963,7 +1284,7 @@ public sealed partial class MainPage : Page
     private void TreemapCanvas_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         var pos = e.GetPosition(TreemapCanvas);
-        if (HitTest(pos)?.Node is not { } node)
+        if (HitNode(pos)?.Node is not { } node)
             return;
 
         var dir = node.IsDirectory ? node : node.Parent;

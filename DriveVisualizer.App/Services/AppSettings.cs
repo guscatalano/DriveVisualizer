@@ -37,6 +37,17 @@ public static class AppSettings
         set => SetBool(nameof(SideBySideLayout), value);
     }
 
+    /// <summary>Visualization style: 0 treemap, 1 sunburst, 2 icicle.</summary>
+    public static int VizMode
+    {
+        get => Container?.Values[nameof(VizMode)] is int value ? value : 0;
+        set
+        {
+            if (Container is { } c)
+                c.Values[nameof(VizMode)] = value;
+        }
+    }
+
     /// <summary>Display precision for sizes (DriveVisualizer.Core.SizeDetail as int).</summary>
     public static int SizeDetail
     {

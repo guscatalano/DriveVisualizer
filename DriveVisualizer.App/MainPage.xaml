@@ -9,17 +9,47 @@
     xmlns:win2d="using:Microsoft.Graphics.Canvas.UI.Xaml"
     mc:Ignorable="d">
 
-    <Grid Padding="12,4,12,0">
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Escape" Invoked="EscapeAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Delete" Invoked="DeleteAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Delete" Modifiers="Shift" Invoked="ShiftDeleteAccelerator_Invoked" />
+    </Page.KeyboardAccelerators>
+
+    <Page.Resources>
+        <MenuFlyout x:Key="MapMenu">
+            <MenuFlyoutItem Text="Open" Click="Menu_Open" />
+            <MenuFlyoutItem Text="Show in Explorer" Click="Menu_Reveal" />
+            <MenuFlyoutItem Text="Copy path" Click="Menu_CopyPath" />
+            <MenuFlyoutSeparator />
+            <MenuFlyoutItem Text="Compress and delete original" Click="Menu_Compress" />
+            <MenuFlyoutSeparator />
+            <MenuFlyoutItem Text="Delete (Recycle Bin)" Click="Menu_Recycle" />
+            <MenuFlyoutItem Text="Delete permanently" Click="Menu_DeletePermanent" />
+        </MenuFlyout>
+    </Page.Resources>
+
+    <Grid x:Name="RootGrid" Padding="12,4,12,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" MinHeight="150" />
-            <RowDefinition Height="1.4*" MinHeight="160" />
+            <RowDefinition Height="2*" MinHeight="120" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="1.4*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="0" />
+            <ColumnDefinition Width="0" />
+        </Grid.ColumnDefinitions>
 
         <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,4,0,8">
+        <Grid x:Name="ToolbarPanel" Grid.Row="0" Grid.ColumnSpan="3" Margin="0,4,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="8">
             <ComboBox
                 MinWidth="220"
                 IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}"
@@ -37,28 +67,80 @@
             <ProgressRing
                 Width="20" Height="20"
                 IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
+            <AppBarSeparator />
+            <Button x:Name="LayoutToggleButton" Click="LayoutToggle_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon x:Name="LayoutToggleIcon" Glyph="" FontSize="14" />
+                    <TextBlock x:Name="LayoutToggleText" Text="Map below" />
+                </StackPanel>
+            </Button>
+            <Button Content="Columns">
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <ToggleMenuFlyoutItem Text="% of parent" IsChecked="{x:Bind ViewModel.Prefs.ShowPercent, Mode=TwoWay}" />
+                        <ToggleMenuFlyoutItem Text="Size" IsChecked="{x:Bind ViewModel.Prefs.ShowSize, Mode=TwoWay}" />
+                        <ToggleMenuFlyoutItem Text="Files" IsChecked="{x:Bind ViewModel.Prefs.ShowFiles, Mode=TwoWay}" />
+                        <ToggleMenuFlyoutItem Text="Modified" IsChecked="{x:Bind ViewModel.Prefs.ShowModified, Mode=TwoWay}" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+            <Button x:Name="FilterButton" Content="Filter" />
+            <DropDownButton Content="Report">
+                <DropDownButton.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="Save snapshot…" Click="Report_SaveSnapshot" />
+                        <MenuFlyoutItem Text="Export HTML report…" Click="Report_Export" />
+                        <MenuFlyoutItem Text="Compare with snapshot…" Click="Report_Compare" />
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
+            <Button Content="Diff last scan" Click="DiffButton_Click" />
         </StackPanel>
+            <Button x:Name="SettingsButton" Grid.Column="1" Padding="9,6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <FontIcon x:Name="SettingsIcon" FontSize="15" />
+                <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                        <StackPanel Spacing="10" MinWidth="280">
+                            <TextBlock Text="Settings" FontWeight="SemiBold" />
+                            <ToggleSwitch
+                                x:Name="AutoSaveToggle"
+                                Header="Auto-save last scan (enables 'Diff vs last scan')"
+                                Toggled="AutoSaveToggle_Toggled" />
+                            <ComboBox
+                                x:Name="DefaultLayoutCombo"
+                                Header="Layout"
+                                MinWidth="200"
+                                SelectionChanged="DefaultLayout_Changed">
+                                <ComboBoxItem Content="Map below the list" />
+                                <ComboBoxItem Content="Map right of the list" />
+                            </ComboBox>
+                            <HyperlinkButton Content="About DriveVisualizer" Click="About_Click" Padding="0" />
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
 
         <!-- Column headers (widths mirror the item template below) -->
-        <Grid Grid.Row="1" Padding="16,0,24,4">
+        <Grid x:Name="HeaderGrid" Grid.Row="1" Grid.ColumnSpan="3" Padding="16,0,24,4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="90" />
-                <ColumnDefinition Width="80" />
-                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Name" Style="{ThemeResource CaptionTextBlockStyle}" />
-            <TextBlock Grid.Column="1" Text="% of parent" Style="{ThemeResource CaptionTextBlockStyle}" />
-            <TextBlock Grid.Column="2" Text="Size" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
-            <TextBlock Grid.Column="3" Text="Files" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
-            <TextBlock Grid.Column="4" Text="Modified" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="1" Width="140" Text="% of parent" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowPercent, Mode=OneWay}" />
+            <TextBlock Grid.Column="2" Width="90" Text="Size" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowSize, Mode=OneWay}" />
+            <TextBlock Grid.Column="3" Width="80" Text="Files" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowFiles, Mode=OneWay}" />
+            <TextBlock Grid.Column="4" Width="140" Text="Modified" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowModified, Mode=OneWay}" />
         </Grid>
 
         <!-- Directory tree (flattened, virtualized) -->
         <ListView
             x:Name="TreeList"
-            Grid.Row="2"
+            Grid.Row="2" Grid.ColumnSpan="3"
             SelectionMode="Single"
             ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}"
             SelectedItem="{x:Bind ViewModel.SelectedRow, Mode=TwoWay}"
@@ -72,13 +154,25 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:NodeRow">
-                    <Grid>
+                    <Grid Background="Transparent">
+                        <Grid.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="Open" Click="Menu_Open" />
+                                <MenuFlyoutItem Text="Show in Explorer" Click="Menu_Reveal" />
+                                <MenuFlyoutItem Text="Copy path" Click="Menu_CopyPath" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Compress and delete original" Click="Menu_Compress" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Delete (Recycle Bin)" Click="Menu_Recycle" />
+                                <MenuFlyoutItem Text="Delete permanently" Click="Menu_DeletePermanent" />
+                            </MenuFlyout>
+                        </Grid.ContextFlyout>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="140" />
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="80" />
-                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="{x:Bind Indent}" Spacing="4">
@@ -94,52 +188,114 @@
                             <FontIcon Glyph="{x:Bind Badge, Mode=OneWay}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Width="140" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                    Visibility="{x:Bind Prefs.ShowPercent, Mode=OneWay}">
                             <ProgressBar Width="70" Maximum="100" Value="{x:Bind PercentOfParent, Mode=OneWay}" />
                             <TextBlock Text="{x:Bind PercentText, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText, Mode=OneWay}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="3" Text="{x:Bind FilesText, Mode=OneWay}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Grid.Column="4" Text="{x:Bind ModifiedText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Width="90" Text="{x:Bind SizeText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center"
+                                   Visibility="{x:Bind Prefs.ShowSize, Mode=OneWay}" />
+                        <TextBlock Grid.Column="3" Width="80" Text="{x:Bind FilesText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind Prefs.ShowFiles, Mode=OneWay}" />
+                        <TextBlock Grid.Column="4" Width="140" Text="{x:Bind ModifiedText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind Prefs.ShowModified, Mode=OneWay}" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
 
-        <!-- Treemap -->
-        <Grid Grid.Row="3" Margin="0,8,0,0">
-            <win2d:CanvasControl
-                x:Name="TreemapCanvas"
-                Draw="TreemapCanvas_Draw"
-                PointerMoved="TreemapCanvas_PointerMoved"
-                PointerExited="TreemapCanvas_PointerExited"
-                PointerPressed="TreemapCanvas_PointerPressed"
-                DoubleTapped="TreemapCanvas_DoubleTapped"
-                SizeChanged="TreemapCanvas_SizeChanged" />
-            <Button
-                x:Name="ZoomOutButton"
-                Content="Zoom out"
-                Visibility="Collapsed"
-                Click="ZoomOut_Click"
-                HorizontalAlignment="Right" VerticalAlignment="Top"
-                Margin="0,6,6,0" />
+        <!-- Splitter -->
+        <Grid
+            x:Name="SplitterBar"
+            Grid.Row="3" Grid.ColumnSpan="3"
+            Height="12"
+            Background="Transparent"
+            ManipulationMode="TranslateY"
+            ManipulationDelta="Splitter_ManipulationDelta">
             <Border
-                x:Name="HoverTip"
-                Visibility="Collapsed"
-                IsHitTestVisible="False"
-                HorizontalAlignment="Left" VerticalAlignment="Top"
-                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="4"
-                Padding="8,4">
-                <TextBlock x:Name="HoverTipText" Style="{ThemeResource CaptionTextBlockStyle}" />
-            </Border>
+                x:Name="SplitterGrip"
+                Width="48" Height="4"
+                CornerRadius="2"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+        </Grid>
+
+        <!-- Treemap host: legend + canvas -->
+        <Grid x:Name="TreemapHost" Grid.Row="4" Grid.ColumnSpan="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <ItemsControl
+                Grid.Row="0"
+                Margin="2,0,2,6"
+                ItemsSource="{x:Bind ViewModel.Categories, Mode=OneWay}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="14" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CategoryStat">
+                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" Opacity="{x:Bind Opacity}">
+                            <Rectangle Width="11" Height="11" RadiusX="2" RadiusY="2" Fill="{x:Bind Swatch}" VerticalAlignment="Center" />
+                            <TextBlock Text="{x:Bind Name}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                            <TextBlock Text="{x:Bind SizeText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Grid Grid.Row="1" CornerRadius="6">
+                <win2d:CanvasControl
+                    x:Name="TreemapCanvas"
+                    Draw="TreemapCanvas_Draw"
+                    PointerMoved="TreemapCanvas_PointerMoved"
+                    PointerExited="TreemapCanvas_PointerExited"
+                    PointerPressed="TreemapCanvas_PointerPressed"
+                    DoubleTapped="TreemapCanvas_DoubleTapped"
+                    SizeChanged="TreemapCanvas_SizeChanged" />
+                <StackPanel
+                    x:Name="ZoomBar"
+                    Orientation="Horizontal" Spacing="8"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="8,8,0,0">
+                    <Button
+                        x:Name="ZoomOutButton"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="ZoomOut_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon x:Name="ZoomOutIcon" FontSize="13" />
+                            <TextBlock Text="Zoom out" />
+                        </StackPanel>
+                    </Button>
+                    <Border
+                        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                        <TextBlock x:Name="ZoomPathText" Style="{ThemeResource CaptionTextBlockStyle}" />
+                    </Border>
+                </StackPanel>
+                <Border
+                    x:Name="HoverTip"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8,4">
+                    <TextBlock x:Name="HoverTipText" Style="{ThemeResource CaptionTextBlockStyle}" />
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- Status bar -->
-        <Grid Grid.Row="4" Padding="4,6,4,8">
+        <Grid x:Name="StatusBar" Grid.Row="5" Grid.ColumnSpan="3" Padding="4,6,4,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

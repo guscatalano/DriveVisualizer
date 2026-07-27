@@ -34,6 +34,32 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        UnhandledException += (_, e) =>
+        {
+            LogCrash("XamlUnhandled", e.Exception, e.Message);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            LogCrash("AppDomainUnhandled", e.ExceptionObject as Exception, null);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            LogCrash("UnobservedTask", e.Exception, null);
+            e.SetObserved();
+        };
+    }
+
+    private static void LogCrash(string source, Exception? ex, string? message)
+    {
+        try
+        {
+            string dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveVisualizer");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(System.IO.Path.Combine(dir, "crash.log"),
+                $"[{DateTime.Now:O}] {source}: {message}\n{ex}\n\n");
+        }
+        catch { }
     }
 
     /// <summary>

@@ -23,6 +23,9 @@ public sealed partial class NodeRow : ObservableObject
     public FsNode Node { get; }
     public int Depth { get; }
 
+    /// <summary>Shared column-visibility prefs, exposed so templates can x:Bind through the row.</summary>
+    public ColumnPrefs Prefs => ColumnPrefs.Instance;
+
     private bool _isExpanded;
 
     public NodeRow(FsNode node, int depth, bool isExpanded)

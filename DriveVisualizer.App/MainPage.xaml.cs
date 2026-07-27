@@ -1,7 +1,9 @@
+using System.Numerics;
 using DriveVisualizer.Core;
 using DriveVisualizer.Core.Treemap;
 using DriveVisualizer_App.Rendering;
 using DriveVisualizer_App.ViewModels;
+using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -19,28 +21,88 @@ public sealed partial class MainPage : Page
     public MainViewModel ViewModel { get; }
 
     private readonly DispatcherQueueTimer _resizeTimer;
+    private readonly DispatcherQueueTimer _liveMapTimer;
     private TreemapResult? _treemap;
     private FsNode? _treemapRoot;
     private FsNode? _hoverNode;
     private int _layoutVersion;
+    private bool _sideBySide;
+    private bool _settingsLoading;
 
     public MainPage()
     {
         ViewModel = new MainViewModel(DispatcherQueue);
         InitializeComponent();
 
+        ZoomOutIcon.Glyph = "";        // back arrow
+        LayoutToggleIcon.Glyph = "";   // dock bottom
+
+        // Category filter flyout, one toggle per legend color.
+        var filterMenu = new Microsoft.UI.Xaml.Controls.MenuFlyout();
+        foreach (var (category, name, _) in FileCategories.All)
+        {
+            var item = new Microsoft.UI.Xaml.Controls.ToggleMenuFlyoutItem { Text = name, IsChecked = true };
+            var captured = category;
+            item.Click += (_, _) => ViewModel.SetCategoryEnabled(captured, item.IsChecked);
+            filterMenu.Items.Add(item);
+        }
+        FilterButton.Flyout = filterMenu;
+
+        // Restore persisted settings without letting the change handlers re-save them.
+        _settingsLoading = true;
+        SettingsIcon.Glyph = ""; // gear
+        AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
+        _sideBySide = Services.AppSettings.SideBySideLayout;
+        DefaultLayoutCombo.SelectedIndex = _sideBySide ? 1 : 0;
+        if (_sideBySide)
+            ApplyLayout();
+        _settingsLoading = false;
+
         _resizeTimer = DispatcherQueue.CreateTimer();
         _resizeTimer.Interval = TimeSpan.FromMilliseconds(150);
         _resizeTimer.IsRepeating = false;
         _resizeTimer.Tick += (_, _) => RecomputeTreemap();
+
+        // While a scan runs, re-lay the treemap from the growing tree so the
+        // map assembles itself in front of the user.
+        _liveMapTimer = DispatcherQueue.CreateTimer();
+        _liveMapTimer.Interval = TimeSpan.FromMilliseconds(800);
+        _liveMapTimer.IsRepeating = true;
+        _liveMapTimer.Tick += (_, _) => RecomputeTreemap();
 
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.ScanRoot))
             {
                 _treemapRoot = ViewModel.ScanRoot;
-                UpdateZoomOutButton();
+                UpdateZoomBar();
                 RecomputeTreemap();
+            }
+            else if (e.PropertyName == nameof(MainViewModel.LiveRoot))
+            {
+                if (ViewModel.LiveRoot is { } live)
+                {
+                    _treemapRoot = live;
+                    UpdateZoomBar();
+                    RecomputeTreemap();
+                    _liveMapTimer.Start();
+                }
+                else
+                {
+                    _liveMapTimer.Stop();
+                }
+            }
+            else if (e.PropertyName == nameof(MainViewModel.TreeVersion))
+            {
+                // After a delete/compress the zoom root may no longer be attached.
+                if (!IsAttachedToScanRoot(_treemapRoot))
+                    _treemapRoot = ViewModel.ScanRoot;
+                UpdateZoomBar();
+                RecomputeTreemap();
+            }
+            else if (e.PropertyName == nameof(MainViewModel.FilterVersion))
+            {
+                TreemapCanvas.Invalidate();
             }
             else if (e.PropertyName == nameof(MainViewModel.SelectedRow))
             {
@@ -49,23 +111,207 @@ public sealed partial class MainPage : Page
         };
     }
 
+    private bool IsAttachedToScanRoot(FsNode? node)
+    {
+        for (; node is not null; node = node.Parent)
+            if (ReferenceEquals(node, ViewModel.ScanRoot))
+                return true;
+        return false;
+    }
+
     // ---------- Toolbar ----------
 
     private async void Browse_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
-        picker.FileTypeFilter.Add("*");
+        try
+        {
+            var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(App.Window!.AppWindow.Id);
+            var result = await picker.PickSingleFolderAsync();
+            if (result is null)
+                return;
 
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.Window);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+            if (!ViewModel.Targets.Contains(result.Path))
+                ViewModel.Targets.Add(result.Path);
+            ViewModel.SelectedTarget = result.Path;
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not open folder picker: {ex.Message}";
+        }
+    }
 
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is null)
+    // ---------- Layout: bottom / side-by-side ----------
+
+    private void LayoutToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _sideBySide = !_sideBySide;
+        Services.AppSettings.SideBySideLayout = _sideBySide;
+        _settingsLoading = true;
+        DefaultLayoutCombo.SelectedIndex = _sideBySide ? 1 : 0;
+        _settingsLoading = false;
+        ApplyLayout();
+        RecomputeTreemap();
+    }
+
+    private void AutoSaveToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsLoading)
+            Services.AppSettings.AutoSaveSnapshots = AutoSaveToggle.IsOn;
+    }
+
+    private void DefaultLayout_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_settingsLoading)
             return;
+        bool side = DefaultLayoutCombo.SelectedIndex == 1;
+        Services.AppSettings.SideBySideLayout = side;
+        if (side != _sideBySide)
+        {
+            _sideBySide = side;
+            ApplyLayout();
+            RecomputeTreemap();
+        }
+    }
 
-        if (!ViewModel.Targets.Contains(folder.Path))
-            ViewModel.Targets.Add(folder.Path);
-        ViewModel.SelectedTarget = folder.Path;
+    private async void About_Click(object sender, RoutedEventArgs e)
+    {
+        string version;
+        try
+        {
+            var v = Windows.ApplicationModel.Package.Current.Id.Version;
+            version = $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        }
+        catch
+        {
+            version = "dev";
+        }
+
+        var links = new StackPanel { Spacing = 4 };
+        links.Children.Add(new TextBlock
+        {
+            Text = $"DriveVisualizer {version}\nSee what's eating your disk: scan, map, clean up.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        links.Children.Add(new HyperlinkButton
+        {
+            Content = "github.com/guscatalano/DriveVisualizer",
+            NavigateUri = new Uri("https://github.com/guscatalano/DriveVisualizer"),
+            Padding = new Thickness(0),
+        });
+        links.Children.Add(new HyperlinkButton
+        {
+            Content = "guscatalano.com",
+            NavigateUri = new Uri("https://guscatalano.com"),
+            Padding = new Thickness(0),
+        });
+        links.Children.Add(new TextBlock
+        {
+            Text = "Built with WinUI 3, Win2D, and the Windows App SDK.",
+            Opacity = 0.7,
+            Margin = new Thickness(0, 8, 0, 0),
+        });
+
+        var dialog = new ContentDialog
+        {
+            Title = "About DriveVisualizer",
+            Content = links,
+            CloseButtonText = "Close",
+            XamlRoot = XamlRoot,
+        };
+        await dialog.ShowAsync();
+    }
+
+    private void ApplyLayout()
+    {
+        var rows = RootGrid.RowDefinitions;
+        var cols = RootGrid.ColumnDefinitions;
+
+        if (!_sideBySide)
+        {
+            LayoutToggleText.Text = "Map below";
+            LayoutToggleIcon.Glyph = ""; // dock bottom
+
+            rows[2].Height = new GridLength(2, GridUnitType.Star);
+            rows[2].MinHeight = 120;
+            rows[3].Height = GridLength.Auto;
+            rows[4].Height = new GridLength(1.4, GridUnitType.Star);
+            rows[4].MinHeight = 160;
+            cols[0].Width = new GridLength(1, GridUnitType.Star);
+            cols[0].MinWidth = 0;
+            cols[1].Width = new GridLength(0);
+            cols[2].Width = new GridLength(0);
+            cols[2].MinWidth = 0;
+
+            Grid.SetColumnSpan(HeaderGrid, 3);
+            Grid.SetColumnSpan(TreeList, 3);
+
+            Grid.SetRow(SplitterBar, 3);
+            Grid.SetColumn(SplitterBar, 0);
+            Grid.SetColumnSpan(SplitterBar, 3);
+            Grid.SetRowSpan(SplitterBar, 1);
+            SplitterBar.Height = 12;
+            SplitterBar.Width = double.NaN;
+            SplitterBar.ManipulationMode = ManipulationModes.TranslateY;
+            SplitterGrip.Width = 48;
+            SplitterGrip.Height = 4;
+
+            Grid.SetRow(TreemapHost, 4);
+            Grid.SetColumn(TreemapHost, 0);
+            Grid.SetColumnSpan(TreemapHost, 3);
+            Grid.SetRowSpan(TreemapHost, 1);
+        }
+        else
+        {
+            LayoutToggleText.Text = "Map right";
+            LayoutToggleIcon.Glyph = ""; // dock right
+
+            rows[2].Height = new GridLength(1, GridUnitType.Star);
+            rows[2].MinHeight = 120;
+            rows[3].Height = new GridLength(0);
+            rows[4].Height = new GridLength(0);
+            rows[4].MinHeight = 0;
+            cols[0].Width = new GridLength(1.2, GridUnitType.Star);
+            cols[0].MinWidth = 320;
+            cols[1].Width = GridLength.Auto;
+            cols[2].Width = new GridLength(1, GridUnitType.Star);
+            cols[2].MinWidth = 260;
+
+            Grid.SetColumnSpan(HeaderGrid, 1);
+            Grid.SetColumnSpan(TreeList, 1);
+
+            Grid.SetRow(SplitterBar, 1);
+            Grid.SetColumn(SplitterBar, 1);
+            Grid.SetColumnSpan(SplitterBar, 1);
+            Grid.SetRowSpan(SplitterBar, 2);
+            SplitterBar.Height = double.NaN;
+            SplitterBar.Width = 12;
+            SplitterBar.ManipulationMode = ManipulationModes.TranslateX;
+            SplitterGrip.Width = 4;
+            SplitterGrip.Height = 48;
+
+            Grid.SetRow(TreemapHost, 1);
+            Grid.SetColumn(TreemapHost, 2);
+            Grid.SetColumnSpan(TreemapHost, 1);
+            Grid.SetRowSpan(TreemapHost, 2);
+        }
+    }
+
+    private void Splitter_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (!_sideBySide)
+        {
+            double target = TreeList.ActualHeight + e.Delta.Translation.Y;
+            double max = Math.Max(140, RootGrid.ActualHeight - 320);
+            RootGrid.RowDefinitions[2].Height =
+                new GridLength(Math.Clamp(target, 120, max), GridUnitType.Pixel);
+        }
+        else
+        {
+            double target = RootGrid.ColumnDefinitions[0].ActualWidth + e.Delta.Translation.X;
+            double max = Math.Max(340, RootGrid.ActualWidth - 300);
+            RootGrid.ColumnDefinitions[0].Width =
+                new GridLength(Math.Clamp(target, 320, max), GridUnitType.Pixel);
+        }
     }
 
     // ---------- Tree ----------
@@ -80,6 +326,248 @@ public sealed partial class MainPage : Page
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is NodeRow row)
             ViewModel.ToggleExpand(row);
+    }
+
+    // ---------- Reports & snapshots ----------
+
+    private void DiffButton_Click(object sender, RoutedEventArgs e) => OpenDiffReport();
+
+    private void OpenDiffReport()
+    {
+        if (ViewModel is not { CurrentSnapshot: { } current, AutoBaseline: { } baseline })
+        {
+            ViewModel.StatusText = "No previous scan of this target to diff against yet.";
+            return;
+        }
+        string html = DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(current, baseline);
+        string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-diff-{DateTime.Now:yyyyMMdd-HHmmss}.html");
+        File.WriteAllText(path, html);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    private async void Report_SaveSnapshot(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentSnapshot is not { } snapshot)
+        {
+            ViewModel.StatusText = "Run a scan first.";
+            return;
+        }
+        try
+        {
+            var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(App.Window!.AppWindow.Id)
+            {
+                SuggestedFileName = $"scan-{DateTime.Now:yyyy-MM-dd}",
+                DefaultFileExtension = ".dvsnap",
+            };
+            picker.FileTypeChoices.Add("DriveVisualizer snapshot", [".dvsnap"]);
+            var result = await picker.PickSaveFileAsync();
+            if (result is null)
+                return;
+            await Task.Run(() => snapshot.Save(result.Path));
+            ViewModel.StatusText = $"Snapshot saved to {result.Path}";
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not save snapshot: {ex.Message}";
+        }
+    }
+
+    private async void Report_Export(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentSnapshot is not { } snapshot)
+        {
+            ViewModel.StatusText = "Run a scan first.";
+            return;
+        }
+        try
+        {
+            var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(App.Window!.AppWindow.Id)
+            {
+                SuggestedFileName = $"DriveVisualizer-report-{DateTime.Now:yyyy-MM-dd}",
+                DefaultFileExtension = ".html",
+            };
+            picker.FileTypeChoices.Add("HTML report", [".html"]);
+            var result = await picker.PickSaveFileAsync();
+            if (result is null)
+                return;
+            string html = await Task.Run(() =>
+                DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, ViewModel.AutoBaseline));
+            await File.WriteAllTextAsync(result.Path, html);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.Path) { UseShellExecute = true });
+            ViewModel.StatusText = $"Report saved to {result.Path}";
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not export report: {ex.Message}";
+        }
+    }
+
+    private async void Report_Compare(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentSnapshot is not { } snapshot)
+        {
+            ViewModel.StatusText = "Run a scan first.";
+            return;
+        }
+        try
+        {
+            var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(App.Window!.AppWindow.Id);
+            picker.FileTypeFilter.Add(".dvsnap");
+            var result = await picker.PickSingleFileAsync();
+            if (result is null)
+                return;
+            string html = await Task.Run(() =>
+            {
+                var baseline = DriveVisualizer.Core.Snapshots.ScanSnapshot.Load(result.Path);
+                return DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, baseline);
+            });
+            string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-compare-{DateTime.Now:yyyyMMdd-HHmmss}.html");
+            await File.WriteAllTextAsync(path, html);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not compare: {ex.Message}";
+        }
+    }
+
+    // ---------- Context-menu actions ----------
+
+    private NodeRow? RowFrom(object sender) =>
+        (sender as FrameworkElement)?.DataContext as NodeRow ?? ViewModel.SelectedRow;
+
+    private void Menu_Open(object sender, RoutedEventArgs e)
+    {
+        if (RowFrom(sender)?.Node is { } node)
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(node.GetFullPath()) { UseShellExecute = true });
+    }
+
+    private void Menu_Reveal(object sender, RoutedEventArgs e)
+    {
+        if (RowFrom(sender)?.Node is { } node)
+            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{node.GetFullPath()}\"");
+    }
+
+    private void Menu_CopyPath(object sender, RoutedEventArgs e)
+    {
+        if (RowFrom(sender)?.Node is { } node)
+        {
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(node.GetFullPath());
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        }
+    }
+
+    private async void Menu_Recycle(object sender, RoutedEventArgs e) =>
+        await DeleteAsync(RowFrom(sender), permanent: false);
+
+    private async void Menu_DeletePermanent(object sender, RoutedEventArgs e) =>
+        await DeleteAsync(RowFrom(sender), permanent: true);
+
+    private async void DeleteAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (ViewModel.SelectedRow is { } row)
+        {
+            args.Handled = true;
+            await DeleteAsync(row, permanent: false);
+        }
+    }
+
+    private async void ShiftDeleteAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (ViewModel.SelectedRow is { } row)
+        {
+            args.Handled = true;
+            await DeleteAsync(row, permanent: true);
+        }
+    }
+
+    private async Task<bool> ConfirmAsync(string title, string message, string primaryText)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primaryText,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private static string Describe(NodeRow row) =>
+        row.Node.IsDirectory
+            ? $"the folder \"{row.Node.Name}\" ({row.SizeText}, {row.Node.SubtreeFileCount:N0} files)"
+            : $"\"{row.Node.Name}\" ({row.SizeText})";
+
+    private async Task DeleteAsync(NodeRow? row, bool permanent)
+    {
+        if (row?.Node is not { Parent: not null } node || ViewModel.IsScanning)
+            return;
+
+        string path = node.GetFullPath();
+        bool confirmed = permanent
+            ? await ConfirmAsync("Delete permanently?",
+                $"Permanently delete {Describe(row)}?\n\n{path}\n\nThis cannot be undone.",
+                "Delete permanently")
+            : await ConfirmAsync("Move to Recycle Bin?",
+                $"Move {Describe(row)} to the Recycle Bin?\n\n{path}",
+                "Recycle");
+        if (!confirmed)
+            return;
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.Window);
+        bool gone = Interop.ShellFileOps.Delete(path, permanent, hwnd);
+        if (gone)
+        {
+            ViewModel.RemoveNode(node);
+            ViewModel.StatusText = $"Deleted {node.Name} — freed {ByteFormatter.Format(node.AllocatedSize)}";
+        }
+        else
+        {
+            ViewModel.StatusText = $"Delete of {node.Name} was cancelled or failed";
+        }
+    }
+
+    private async void Menu_Compress(object sender, RoutedEventArgs e)
+    {
+        var row = RowFrom(sender);
+        if (row?.Node is not { Parent: not null } node || ViewModel.IsScanning)
+            return;
+
+        string path = node.GetFullPath();
+        string zipPath = Services.ZipCompressor.MakeZipPath(path);
+        bool confirmed = await ConfirmAsync("Compress and delete original?",
+            $"Compress {Describe(row)} into\n\n{zipPath}\n\nand then permanently delete the original? " +
+            "Space savings depend on how compressible the content is.",
+            "Compress & delete");
+        if (!confirmed)
+            return;
+
+        ViewModel.StatusText = $"Compressing {node.Name}…";
+        try
+        {
+            long zipSize = await Services.ZipCompressor.CompressAsync(path, zipPath, node.IsDirectory);
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.Window);
+            bool gone = Interop.ShellFileOps.Delete(path, permanent: true, hwnd);
+
+            var parent = node.Parent!;
+            if (gone)
+                ViewModel.RemoveNode(node);
+            ViewModel.AddFile(parent, Path.GetFileName(zipPath), zipSize);
+
+            long freed = node.AllocatedSize - zipSize;
+            ViewModel.StatusText = gone
+                ? $"Compressed {node.Name} to {ByteFormatter.Format(zipSize)} — freed {ByteFormatter.Format(Math.Max(0, freed))}"
+                : $"Compressed {node.Name}, but the original could not be deleted";
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(zipPath)) File.Delete(zipPath); } catch { }
+            ViewModel.StatusText = $"Compress failed: {ex.Message}";
+        }
     }
 
     // ---------- Treemap ----------
@@ -109,28 +597,60 @@ public sealed partial class MainPage : Page
     {
         var ds = args.DrawingSession;
 
+        // Chart surface (dark, matches the validated dark palette steps).
+        ds.Clear(Color.FromArgb(255, 26, 26, 25));
+
         if (_treemap is not { } treemap || treemap.Tiles.Count == 0)
         {
-            ds.DrawText("Scan a drive to see the treemap", 12, 12, Color.FromArgb(255, 128, 128, 128));
+            ds.DrawText("Scan a drive to see the treemap", 12, 12, Color.FromArgb(255, 137, 135, 129));
             return;
         }
 
-        var border = Color.FromArgb(90, 0, 0, 0);
+        // Shared cushion gradient: light falls from the top-left, shade gathers
+        // bottom-right. Repositioned per tile — one brush for the whole draw.
+        using var cushion = new CanvasLinearGradientBrush(sender,
+        [
+            new CanvasGradientStop { Position = 0.0f, Color = Color.FromArgb(85, 255, 255, 255) },
+            new CanvasGradientStop { Position = 0.55f, Color = Color.FromArgb(0, 255, 255, 255) },
+            new CanvasGradientStop { Position = 1.0f, Color = Color.FromArgb(110, 0, 0, 0) },
+        ]);
+
+        var tileEdge = Color.FromArgb(70, 0, 0, 0);
+        var aggregateFill = Color.FromArgb(255, 56, 56, 53);
+
+        var surface = Color.FromArgb(255, 26, 26, 25);
         foreach (var tile in treemap.Tiles)
         {
             var r = tile.Rect;
-            Color fill = tile.IsAggregate ? TileColors.Aggregate : TileColors.ForFileName(tile.Node.Name);
+
+            bool filteredOut = !tile.IsAggregate && !tile.Node.IsDirectory &&
+                !ViewModel.IsCategoryEnabled(FileCategories.Classify(tile.Node.Name));
+            if (filteredOut)
+            {
+                // Ghost of the original color, so it reads as "dimmed", not recolored.
+                var c = FileCategories.TileColor(tile.Node.Name);
+                ds.FillRectangle(r.X, r.Y, r.Width, r.Height, surface);
+                ds.FillRectangle(r.X, r.Y, r.Width, r.Height, Color.FromArgb(45, c.R, c.G, c.B));
+                continue;
+            }
+
+            Color fill = tile.IsAggregate ? aggregateFill : FileCategories.TileColor(tile.Node.Name);
             ds.FillRectangle(r.X, r.Y, r.Width, r.Height, fill);
-            if (r.Width > 3 && r.Height > 3)
-                ds.DrawRectangle(r.X + 0.5f, r.Y + 0.5f, r.Width - 1, r.Height - 1, border, 1f);
+
+            cushion.StartPoint = new Vector2(r.X, r.Y);
+            cushion.EndPoint = new Vector2(r.Right, r.Bottom);
+            ds.FillRectangle(r.X, r.Y, r.Width, r.Height, cushion);
+
+            if (r.Width > 5 && r.Height > 5)
+                ds.DrawRectangle(r.X + 0.5f, r.Y + 0.5f, r.Width - 1, r.Height - 1, tileEdge, 1f);
         }
 
-        // Directory outlines give the nested structure some visual grouping.
-        var dirOutline = Color.FromArgb(140, 255, 255, 255);
+        // Subtle dark seams around directories give grouping without shouting.
+        var dirOutline = Color.FromArgb(150, 13, 13, 13);
         foreach (var (dir, rect) in treemap.DirectoryBounds)
         {
             if (dir != _treemapRoot && rect.Width > 24 && rect.Height > 24)
-                ds.DrawRectangle(rect.X, rect.Y, rect.Width, rect.Height, dirOutline, 1f);
+                ds.DrawRectangle(rect.X, rect.Y, rect.Width, rect.Height, dirOutline, 1.5f);
         }
 
         // Selection highlight: a directory gets its recorded bounds, a file its tile.
@@ -149,7 +669,8 @@ public sealed partial class MainPage : Page
 
             if (highlight is { } hr)
             {
-                ds.DrawRectangle(hr.X + 1, hr.Y + 1, hr.Width - 2, hr.Height - 2, Colors.White, 2.5f);
+                ds.DrawRectangle(hr.X, hr.Y, hr.Width, hr.Height, Color.FromArgb(200, 0, 0, 0), 4f);
+                ds.DrawRectangle(hr.X, hr.Y, hr.Width, hr.Height, Colors.White, 2f);
             }
         }
     }
@@ -180,9 +701,12 @@ public sealed partial class MainPage : Page
         if (!ReferenceEquals(node, _hoverNode))
         {
             _hoverNode = node;
+            string category = node.IsDirectory
+                ? "folder"
+                : FileCategories.NameOf(FileCategories.Classify(node.Name));
             HoverTipText.Text = tile!.Value.IsAggregate
-                ? $"{node.GetFullPath()}  (small items)  {ByteFormatter.Format(node.AllocatedSize)}"
-                : $"{node.GetFullPath()}  {ByteFormatter.Format(node.AllocatedSize)}";
+                ? $"{node.GetFullPath()}  ·  small items  ·  {ByteFormatter.Format(node.AllocatedSize)}"
+                : $"{node.GetFullPath()}  ·  {category}  ·  {ByteFormatter.Format(node.AllocatedSize)}";
         }
 
         HoverTip.Margin = new Thickness(
@@ -200,12 +724,18 @@ public sealed partial class MainPage : Page
 
     private void TreemapCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        var pos = e.GetCurrentPoint(TreemapCanvas).Position;
-        if (HitTest(pos)?.Node is { } node)
+        var point = e.GetCurrentPoint(TreemapCanvas);
+        if (HitTest(point.Position)?.Node is not { } node)
+            return;
+
+        ViewModel.SelectNode(node);
+        if (ViewModel.SelectedRow is { } row)
+            TreeList.ScrollIntoView(row);
+
+        if (point.Properties.IsRightButtonPressed &&
+            Resources["MapMenu"] is Microsoft.UI.Xaml.Controls.MenuFlyout menu)
         {
-            ViewModel.SelectNode(node);
-            if (ViewModel.SelectedRow is { } row)
-                TreeList.ScrollIntoView(row);
+            menu.ShowAt(TreemapCanvas, point.Position);
         }
     }
 
@@ -220,14 +750,25 @@ public sealed partial class MainPage : Page
             return;
 
         _treemapRoot = dir;
-        UpdateZoomOutButton();
+        UpdateZoomBar();
         RecomputeTreemap();
     }
 
-    private void ZoomOut_Click(object sender, RoutedEventArgs e)
+    private void ZoomOut_Click(object sender, RoutedEventArgs e) => ZoomOutOneLevel();
+
+    private void EscapeAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (ZoomBar.Visibility == Visibility.Visible)
+        {
+            ZoomOutOneLevel();
+            args.Handled = true;
+        }
+    }
+
+    private void ZoomOutOneLevel()
     {
         _treemapRoot = _treemapRoot?.Parent ?? ViewModel.ScanRoot;
-        UpdateZoomOutButton();
+        UpdateZoomBar();
         RecomputeTreemap();
     }
 
@@ -237,9 +778,12 @@ public sealed partial class MainPage : Page
         _resizeTimer.Start();
     }
 
-    private void UpdateZoomOutButton() =>
-        ZoomOutButton.Visibility =
-            _treemapRoot is not null && !ReferenceEquals(_treemapRoot, ViewModel.ScanRoot)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+    private void UpdateZoomBar()
+    {
+        bool zoomed = _treemapRoot is not null
+            && !ReferenceEquals(_treemapRoot, ViewModel.ScanRoot)
+            && !ReferenceEquals(_treemapRoot, ViewModel.LiveRoot);
+        ZoomBar.Visibility = zoomed ? Visibility.Visible : Visibility.Collapsed;
+        ZoomPathText.Text = zoomed ? _treemapRoot!.GetFullPath() : "";
+    }
 }

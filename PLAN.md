@@ -93,9 +93,10 @@ Run unelevated by default; count access-denied directories and show an info bar:
 - **M1 — Scan engine (Core + console harness).** ✅ DONE. Parallel Win32 enumeration, correct sizes, junction handling, cancellation, 7 unit tests. Benchmark: full C:\ (1.04M files, 318K dirs, 510 GB) in 25.8 s.
 - **M2 — App shell + directory tree.** ✅ DONE. Drive/folder picker, scan/stop with live progress, virtualized flattened-tree ListView with %-of-parent bars, size/files/modified columns, expand via chevron or double-click. Verified against a full C:\ scan (17 s warm).
 - **M3 — Treemap.** ✅ DONE. Squarified layout in Core (6 unit tests), Win2D rendering with extension colors + directory outlines, hover tooltip, click→tree selection sync (auto-expands ancestors), double-click zoom with Zoom-out button. Also added: live tree building during scan (scanner propagates sizes up ancestors incrementally; rows refresh in place). Scan of C:\ now 6.8 s warm.
-- **M4 — File types panel + actions.** Extension stats, legend-driven highlighting, open/reveal/recycle/delete with re-aggregation.
-- **M5 — Polish.** Cushion shading, settings (colors, exclusions, treemap style), dark/light theme, remembered window state, skipped-items report, elevation relaunch.
-- **v2 ideas.** MFT fast scan, compare two scans (what grew?), duplicate finder, scan export/import.
+- **M4 — File types panel + actions.** ✅ DONE (as category legend + context menu). Semantic file categories (9, CVD-validated palette) with legend above the treemap; category filter (hides rows, ghosts tiles); right-click Open / Show in Explorer / Copy path / Compress-and-delete-to-zip / Recycle / Delete permanently (confirmed dialogs, shell SHFileOperation, model re-aggregation); Del / Shift+Del accelerators.
+- **M5 — Polish.** ✅ Mostly done. Cushion-shaded tiles on dark chart surface, draggable splitter, bottom/right layout toggle (persisted), column show/hide menu, prominent Zoom out + Escape, settings flyout (auto-save toggle, layout default) with About panel (GitHub + guscatalano.com links), custom treemap-motif app icon + full MSIX asset set. Remaining ideas: folder labels on large treemap regions, elevation relaunch, exclusions.
+- **Snapshots & reports.** ✅ DONE. Gzipped-JSON scan snapshots (*.dvsnap: all dirs, category totals, top files); auto-saved per target in app data (toggleable); self-contained HTML report (print → PDF) with categories, largest folders/files; comparison vs baseline with Then/Change/Now grower/shrinker tables; "Diff last scan" button; Report menu (save snapshot / export report / compare).
+- **v2 ideas.** MFT fast scan, duplicate finder, per-row delta column in tree after a compare.
 
 ## Risks / gotchas to keep in mind
 

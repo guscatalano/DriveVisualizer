@@ -226,6 +226,7 @@ public partial class MainViewModel : ObservableObject
 
             _root = result.Root;
             _expanded.Add(_root);
+            Prefs.FitToLargestValue(_root.AllocatedSize);
             RebuildAllRows();
             Categories = BuildCategoryStats(categoryTotals, _root.AllocatedSize);
             ScanRoot = _root;
@@ -309,6 +310,9 @@ public partial class MainViewModel : ObservableObject
     {
         if (_scanner is not { } scanner)
             return;
+
+        if (_root is not null)
+            Prefs.FitToLargestValue(_root.AllocatedSize);
 
         var s = scanner.Statistics;
         StatusText = $"Scanning…  {s.Files:N0} files, {s.Directories:N0} folders, " +
@@ -758,6 +762,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (_root is null)
             return;
+        Prefs.FitToLargestValue(_root.AllocatedSize);
         RebuildAllRows();
         if (_categoryTotals is { } totals)
             Categories = BuildCategoryStats(totals, _root.AllocatedSize);

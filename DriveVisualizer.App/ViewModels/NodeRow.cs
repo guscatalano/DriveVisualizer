@@ -79,6 +79,13 @@ public sealed partial class NodeRow : ObservableObject
 
     public string PercentText => $"{PercentOfParent:F1}%";
     public string SizeText => ByteFormatter.Format(Node.AllocatedSize);
+
+    /// <summary>Hover breakdown of the size in every applicable unit.</summary>
+    public string SizeTooltip => ByteFormatter.FormatAllUnits(Node.AllocatedSize);
+
+    public string DeltaTooltip => Delta is { } d && d != 0
+        ? (d > 0 ? "grew\n" : "shrank\n") + ByteFormatter.FormatAllUnits(Math.Abs(d))
+        : "";
     public string FilesText => Node.IsDirectory ? Node.SubtreeFileCount.ToString("N0") : "";
 
     public string ModifiedText => Node.LastWriteTimeTicks > 0
@@ -98,6 +105,7 @@ public sealed partial class NodeRow : ObservableObject
         OnPropertyChanged(nameof(PercentOfParent));
         OnPropertyChanged(nameof(PercentText));
         OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(SizeTooltip));
         OnPropertyChanged(nameof(FilesText));
         OnPropertyChanged(nameof(ChevronGlyph));
         OnPropertyChanged(nameof(HasChildren));

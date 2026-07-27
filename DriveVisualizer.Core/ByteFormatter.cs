@@ -24,6 +24,17 @@ public static class ByteFormatter
         _ => FormatUnits(bytes, "F1"),
     };
 
+    /// <summary>The value in every unit it's ≥ 1 of, one per line: "251.3 GB\n257,357.4 MB\n…\n269,853,412,352 B".</summary>
+    public static string FormatAllUnits(long bytes)
+    {
+        var lines = new List<string>(5);
+        double value = bytes;
+        for (int unit = 0; unit < Units.Length && (unit == 0 || value >= 1); unit++, value /= 1024)
+            lines.Add(unit == 0 ? $"{bytes:N0} B" : $"{value:N1} {Units[unit]}");
+        lines.Reverse();
+        return string.Join("\n", lines);
+    }
+
     private static string FormatUnits(long bytes, string decimals)
     {
         double value = bytes;

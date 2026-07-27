@@ -67,6 +67,10 @@ wix build installer\Package.wxs -d "PublishDir=$PWD\artifacts\publish" -arch x64
 
 Design notes live in [PLAN.md](PLAN.md).
 
+## License
+
+[MIT](LICENSE)
+
 ## Links
 
 - [github.com/guscatalano/DriveVisualizer](https://github.com/guscatalano/DriveVisualizer)

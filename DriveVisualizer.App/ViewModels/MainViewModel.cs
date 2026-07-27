@@ -98,19 +98,21 @@ public partial class MainViewModel : ObservableObject
         RebuildAllRows();
     }
 
-    public static string GetAutoSnapshotDirectory()
+    private static string GetDataBaseDirectory()
     {
-        string baseDir;
         try
         {
-            baseDir = Windows.Storage.ApplicationData.Current.LocalFolder.Path;
+            return Windows.Storage.ApplicationData.Current.LocalFolder.Path;
         }
         catch
         {
-            baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveVisualizer");
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveVisualizer");
         }
-        return Path.Combine(baseDir, "autosnap");
     }
+
+    /// <summary>Legacy "last scan" folder — superseded by history; kept only so cleanup can delete it.</summary>
+    public static string GetLegacyAutoSnapshotDirectory() =>
+        Path.Combine(GetDataBaseDirectory(), "autosnap");
 
     private static string SanitizeTarget(string target)
     {
@@ -118,12 +120,9 @@ public partial class MainViewModel : ObservableObject
         return new string([.. target.Select(c => invalid.Contains(c) ? '_' : c)]);
     }
 
-    private static string AutoSnapshotPath(string target) =>
-        Path.Combine(GetAutoSnapshotDirectory(), SanitizeTarget(target) + ".dvsnap");
-
-    /// <summary>Root of all per-target daily history folders.</summary>
+    /// <summary>Root of all per-target daily history folders (the single snapshot store).</summary>
     public static string GetHistoryRootDirectory() =>
-        Path.Combine(Path.GetDirectoryName(GetAutoSnapshotDirectory())!, "history");
+        Path.Combine(GetDataBaseDirectory(), "history");
 
     public static string GetHistoryDirectory(string target) =>
         Path.Combine(GetHistoryRootDirectory(), SanitizeTarget(target));
@@ -251,26 +250,24 @@ public partial class MainViewModel : ObservableObject
                     string? prevPath = null;
                     if (autoSave)
                     {
-                        string autoPath = AutoSnapshotPath(target);
+                        // Single store: the daily history folder. The newest entry IS
+                        // the previous scan (dated filenames sort chronologically), so
+                        // no separate "last scan" copy is kept.
+                        string historyDir = GetHistoryDirectory(target);
                         try
                         {
-                            if (File.Exists(autoPath))
+                            if (Directory.Exists(historyDir))
                             {
-                                prev = ScanSnapshot.Load(autoPath);
-                                prevPath = autoPath;
+                                prevPath = Directory.GetFiles(historyDir, "*.dvsnap")
+                                    .OrderByDescending(f => f, StringComparer.OrdinalIgnoreCase)
+                                    .FirstOrDefault();
+                                if (prevPath is not null)
+                                    prev = ScanSnapshot.Load(prevPath);
                             }
                         }
-                        catch { }
+                        catch { prev = null; prevPath = null; }
                         try
                         {
-                            Directory.CreateDirectory(Path.GetDirectoryName(autoPath)!);
-                            snap.Save(autoPath);
-                        }
-                        catch { }
-                        // One history entry per day (today's latest scan wins), for the size-history chart.
-                        try
-                        {
-                            string historyDir = GetHistoryDirectory(target);
                             Directory.CreateDirectory(historyDir);
                             snap.Save(Path.Combine(historyDir, $"{DateTime.Now:yyyy-MM-dd}.dvsnap"));
                         }

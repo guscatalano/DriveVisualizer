@@ -227,9 +227,9 @@ public sealed partial class MainPage : Page
         }
 
         bool confirmed = await ConfirmAsync("Turn off auto-save?",
-            "This also deletes the stored last-scan snapshots and the daily size history, so " +
-            "\"What changed since last scan\", the Change column, and \"Size history\" will have " +
-            "no data until you scan again with auto-save on.",
+            "This also deletes the stored daily snapshots (one folder holds both the last-scan " +
+            "baseline and the size history), so \"What changed since last scan\", the Change column, " +
+            "and \"Size history\" will have no data until you scan again with auto-save on.",
             "Turn off & delete");
         if (!confirmed)
         {
@@ -242,13 +242,13 @@ public sealed partial class MainPage : Page
         Services.AppSettings.AutoSaveSnapshots = false;
         try
         {
-            string dir = MainViewModel.GetAutoSnapshotDirectory();
-            if (Directory.Exists(dir))
-                Directory.Delete(dir, recursive: true);
             string history = MainViewModel.GetHistoryRootDirectory();
             if (Directory.Exists(history))
                 Directory.Delete(history, recursive: true);
-            ViewModel.StatusText = "Auto-save turned off; stored snapshots and size history deleted.";
+            string legacy = MainViewModel.GetLegacyAutoSnapshotDirectory();
+            if (Directory.Exists(legacy))
+                Directory.Delete(legacy, recursive: true);
+            ViewModel.StatusText = "Auto-save turned off; stored snapshots deleted.";
         }
         catch (Exception ex)
         {

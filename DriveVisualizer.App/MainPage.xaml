@@ -17,12 +17,13 @@
     </Page.KeyboardAccelerators>
 
     <Page.Resources>
-        <MenuFlyout x:Key="MapMenu">
+        <MenuFlyout x:Key="MapMenu" Opening="RowMenu_Opening">
             <MenuFlyoutItem Text="Open" Click="Menu_Open" />
             <MenuFlyoutItem Text="Show in Explorer" Click="Menu_Reveal" />
             <MenuFlyoutItem Text="Copy path" Click="Menu_CopyPath" />
+            <MenuFlyoutItem Tag="refresh" Text="Refresh this folder" Click="Menu_RefreshFolder" />
             <MenuFlyoutSeparator />
-            <MenuFlyoutItem Text="Compress and delete original" Click="Menu_Compress" />
+            <MenuFlyoutItem Tag="compress" Text="Compress and delete original" Click="Menu_Compress" />
             <MenuFlyoutSeparator />
             <MenuFlyoutItem Text="Delete (Recycle Bin)" Click="Menu_Recycle" />
             <MenuFlyoutItem Text="Delete permanently" Click="Menu_DeletePermanent" />
@@ -80,6 +81,7 @@
                     <MenuFlyout>
                         <ToggleMenuFlyoutItem Text="% of parent" IsChecked="{x:Bind ViewModel.Prefs.ShowPercent, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem Text="Size" IsChecked="{x:Bind ViewModel.Prefs.ShowSize, Mode=TwoWay}" />
+                        <ToggleMenuFlyoutItem Text="Change" IsChecked="{x:Bind ViewModel.Prefs.ShowChange, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem Text="Files" IsChecked="{x:Bind ViewModel.Prefs.ShowFiles, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem Text="Modified" IsChecked="{x:Bind ViewModel.Prefs.ShowModified, Mode=TwoWay}" />
                     </MenuFlyout>
@@ -89,13 +91,31 @@
             <DropDownButton Content="Report">
                 <DropDownButton.Flyout>
                     <MenuFlyout>
-                        <MenuFlyoutItem Text="Save snapshot…" Click="Report_SaveSnapshot" />
+                        <MenuFlyoutItem Text="What changed since last scan" Click="Report_Diff" />
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="Export HTML report…" Click="Report_Export" />
-                        <MenuFlyoutItem Text="Compare with snapshot…" Click="Report_Compare" />
+                        <MenuFlyoutItem Text="Compare with a snapshot file…" Click="Report_Compare" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Save snapshot as…" Click="Report_SaveSnapshot" />
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
-            <Button Content="Diff last scan" Click="DiffButton_Click" />
+            <CheckBox
+                x:Name="CleanupCheckBox"
+                Content="Cleanup candidates"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                Checked="CleanupCheckBox_Toggled"
+                Unchecked="CleanupCheckBox_Toggled"
+                ToolTipService.ToolTip="Show only files that look safe to review for deletion: temp folders, caches, logs, recycle bin, node_modules" />
+            <CheckBox
+                x:Name="WatchCheckBox"
+                Content="Watch"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                Checked="WatchCheckBox_Toggled"
+                Unchecked="WatchCheckBox_Toggled"
+                ToolTipService.ToolTip="Auto-refresh folders when files change on disk" />
         </StackPanel>
             <Button x:Name="SettingsButton" Grid.Column="1" Padding="9,6" VerticalAlignment="Center" HorizontalAlignment="Right">
                 <FontIcon x:Name="SettingsIcon" FontSize="15" />
@@ -105,16 +125,14 @@
                             <TextBlock Text="Settings" FontWeight="SemiBold" />
                             <ToggleSwitch
                                 x:Name="AutoSaveToggle"
-                                Header="Auto-save last scan (enables 'Diff vs last scan')"
+                                Header="Auto-save last scan (enables 'What changed since last scan')"
                                 Toggled="AutoSaveToggle_Toggled" />
-                            <ComboBox
-                                x:Name="DefaultLayoutCombo"
-                                Header="Layout"
-                                MinWidth="200"
-                                SelectionChanged="DefaultLayout_Changed">
-                                <ComboBoxItem Content="Map below the list" />
-                                <ComboBoxItem Content="Map right of the list" />
-                            </ComboBox>
+                            <TextBlock
+                                Text="Layout is set with the Map below / Map right toolbar button and remembered as the default."
+                                TextWrapping="Wrap"
+                                MaxWidth="260"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <HyperlinkButton Content="About DriveVisualizer" Click="About_Click" Padding="0" />
                         </StackPanel>
                     </Flyout>
@@ -130,12 +148,15 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Name" Style="{ThemeResource CaptionTextBlockStyle}" />
             <TextBlock Grid.Column="1" Width="140" Text="% of parent" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowPercent, Mode=OneWay}" />
             <TextBlock Grid.Column="2" Width="90" Text="Size" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowSize, Mode=OneWay}" />
-            <TextBlock Grid.Column="3" Width="80" Text="Files" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowFiles, Mode=OneWay}" />
-            <TextBlock Grid.Column="4" Width="140" Text="Modified" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowModified, Mode=OneWay}" />
+            <TextBlock Grid.Column="3" Width="90" Text="Change" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowChange, Mode=OneWay}"
+                       ToolTipService.ToolTip="{x:Bind ViewModel.ChangeBaselineText, Mode=OneWay}" />
+            <TextBlock Grid.Column="4" Width="80" Text="Files" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowFiles, Mode=OneWay}" />
+            <TextBlock Grid.Column="5" Width="140" Text="Modified" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowModified, Mode=OneWay}" />
         </Grid>
 
         <!-- Directory tree (flattened, virtualized) -->
@@ -157,12 +178,13 @@
                 <DataTemplate x:DataType="vm:NodeRow">
                     <Grid Background="Transparent">
                         <Grid.ContextFlyout>
-                            <MenuFlyout>
+                            <MenuFlyout Opening="RowMenu_Opening">
                                 <MenuFlyoutItem Text="Open" Click="Menu_Open" />
                                 <MenuFlyoutItem Text="Show in Explorer" Click="Menu_Reveal" />
                                 <MenuFlyoutItem Text="Copy path" Click="Menu_CopyPath" />
+                                <MenuFlyoutItem Tag="refresh" Text="Refresh this folder" Click="Menu_RefreshFolder" />
                                 <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="Compress and delete original" Click="Menu_Compress" />
+                                <MenuFlyoutItem Tag="compress" Text="Compress and delete original" Click="Menu_Compress" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="Delete (Recycle Bin)" Click="Menu_Recycle" />
                                 <MenuFlyoutItem Text="Delete permanently" Click="Menu_DeletePermanent" />
@@ -170,6 +192,7 @@
                         </Grid.ContextFlyout>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -197,9 +220,11 @@
 
                         <TextBlock Grid.Column="2" Width="90" Text="{x:Bind SizeText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center"
                                    Visibility="{x:Bind Prefs.ShowSize, Mode=OneWay}" />
-                        <TextBlock Grid.Column="3" Width="80" Text="{x:Bind FilesText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        <TextBlock Grid.Column="3" Width="90" Text="{x:Bind DeltaText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{x:Bind DeltaBrush}"
+                                   Visibility="{x:Bind Prefs.ShowChange, Mode=OneWay}" />
+                        <TextBlock Grid.Column="4" Width="80" Text="{x:Bind FilesText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Visibility="{x:Bind Prefs.ShowFiles, Mode=OneWay}" />
-                        <TextBlock Grid.Column="4" Width="140" Text="{x:Bind ModifiedText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        <TextBlock Grid.Column="5" Width="140" Text="{x:Bind ModifiedText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Visibility="{x:Bind Prefs.ShowModified, Mode=OneWay}" />
                     </Grid>
                 </DataTemplate>

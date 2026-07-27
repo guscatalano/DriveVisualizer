@@ -17,7 +17,7 @@ public static class ReportGenerator
     private static readonly string[] CategoryHexDark =
         ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767", "#6b6b68"];
 
-    public static string BuildHtml(ScanSnapshot current, ScanSnapshot? baseline = null)
+    public static string BuildHtml(ScanSnapshot current, ScanSnapshot? baseline = null, string? baselineSource = null)
     {
         var sb = new StringBuilder(64 * 1024);
         string title = $"DriveVisualizer report — {WebUtility.HtmlEncode(current.Target)}";
@@ -73,6 +73,8 @@ public static class ReportGenerator
         if (baseline is not null)
             sb.Append($" · compared with {WebUtility.HtmlEncode(baseline.Target)} from {baseline.TimestampUtc:yyyy-MM-dd HH:mm} UTC");
         sb.Append("</div>");
+        if (baseline is not null && baselineSource is not null)
+            sb.Append($"<div class=\"muted\" style=\"font-size:12px\">Baseline: {WebUtility.HtmlEncode(baselineSource)}</div>");
 
         AppendSummaryTiles(sb, current, baseline);
         AppendCategories(sb, current, baseline);

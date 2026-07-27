@@ -20,20 +20,36 @@ public sealed partial class NodeRow : ObservableObject
     private const string LockIcon = "";
     private const string LinkIcon = "";
 
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush GrewBrush =
+        new(Windows.UI.Color.FromArgb(255, 230, 103, 103));
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush ShrankBrush =
+        new(Windows.UI.Color.FromArgb(255, 12, 163, 12));
+
     public FsNode Node { get; }
     public int Depth { get; }
+
+    /// <summary>Allocated-size change vs the previous scan's baseline (directories only).</summary>
+    public long? Delta { get; }
 
     /// <summary>Shared column-visibility prefs, exposed so templates can x:Bind through the row.</summary>
     public ColumnPrefs Prefs => ColumnPrefs.Instance;
 
     private bool _isExpanded;
 
-    public NodeRow(FsNode node, int depth, bool isExpanded)
+    public NodeRow(FsNode node, int depth, bool isExpanded, long? delta = null)
     {
         Node = node;
         Depth = depth;
         _isExpanded = isExpanded;
+        Delta = delta;
     }
+
+    public string DeltaText => Delta is { } d && d != 0
+        ? (d > 0 ? "+" : "−") + ByteFormatter.Format(Math.Abs(d))
+        : "";
+
+    public Microsoft.UI.Xaml.Media.Brush? DeltaBrush =>
+        Delta is { } d && d != 0 ? (d > 0 ? GrewBrush : ShrankBrush) : null;
 
     public bool IsExpanded
     {

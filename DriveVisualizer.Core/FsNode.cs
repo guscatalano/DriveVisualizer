@@ -6,6 +6,8 @@ public enum NodeFlags : byte
     None = 0,
     AccessDenied = 1,
     ReparseSkipped = 2,
+    /// <summary>Marked by <see cref="CleanupHeuristics"/> as safe-to-review disposable data.</summary>
+    CleanupCandidate = 4,
 }
 
 /// <summary>
@@ -19,7 +21,9 @@ public sealed class FsNode
     public const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x400;
 
     public required string Name { get; init; }
-    public FsNode? Parent { get; init; }
+
+    /// <summary>Settable (not init-only) so a folder rescan can graft fresh children onto an existing node.</summary>
+    public FsNode? Parent { get; set; }
 
     /// <summary>Null for files and for directories that could not be scanned.</summary>
     public FsNode[]? Children { get; set; }

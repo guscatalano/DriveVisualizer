@@ -29,6 +29,13 @@ public sealed partial class MainPage : Page
     private bool _sideBySide;
     private bool _settingsLoading;
 
+    private static readonly Microsoft.Graphics.Canvas.Text.CanvasTextFormat DirLabelFormat = new()
+    {
+        FontSize = 11,
+        FontFamily = "Segoe UI",
+        WordWrapping = Microsoft.Graphics.Canvas.Text.CanvasWordWrapping.NoWrap,
+    };
+
     public MainPage()
     {
         ViewModel = new MainViewModel(DispatcherQueue);
@@ -53,7 +60,6 @@ public sealed partial class MainPage : Page
         SettingsIcon.Glyph = ""; // gear
         AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
         _sideBySide = Services.AppSettings.SideBySideLayout;
-        DefaultLayoutCombo.SelectedIndex = _sideBySide ? 1 : 0;
         if (_sideBySide)
             ApplyLayout();
         _settingsLoading = false;
@@ -146,31 +152,51 @@ public sealed partial class MainPage : Page
     {
         _sideBySide = !_sideBySide;
         Services.AppSettings.SideBySideLayout = _sideBySide;
-        _settingsLoading = true;
-        DefaultLayoutCombo.SelectedIndex = _sideBySide ? 1 : 0;
-        _settingsLoading = false;
         ApplyLayout();
         RecomputeTreemap();
     }
 
-    private void AutoSaveToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsLoading)
-            Services.AppSettings.AutoSaveSnapshots = AutoSaveToggle.IsOn;
-    }
-
-    private void DefaultLayout_Changed(object sender, SelectionChangedEventArgs e)
+    private async void AutoSaveToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_settingsLoading)
             return;
-        bool side = DefaultLayoutCombo.SelectedIndex == 1;
-        Services.AppSettings.SideBySideLayout = side;
-        if (side != _sideBySide)
+
+        if (AutoSaveToggle.IsOn)
         {
-            _sideBySide = side;
-            ApplyLayout();
-            RecomputeTreemap();
+            Services.AppSettings.AutoSaveSnapshots = true;
+            return;
         }
+
+        bool confirmed = await ConfirmAsync("Turn off auto-save?",
+            "This also deletes the stored last-scan snapshots, so \"What changed since last scan\" " +
+            "and the Change column won't have a baseline until you scan again with auto-save on.",
+            "Turn off & delete");
+        if (!confirmed)
+        {
+            _settingsLoading = true;
+            AutoSaveToggle.IsOn = true;
+            _settingsLoading = false;
+            return;
+        }
+
+        Services.AppSettings.AutoSaveSnapshots = false;
+        try
+        {
+            string dir = MainViewModel.GetAutoSnapshotDirectory();
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+            ViewModel.StatusText = "Auto-save turned off; stored last-scan snapshots deleted.";
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Auto-save turned off, but snapshots could not be deleted: {ex.Message}";
+        }
+    }
+
+    private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)
+    {
+        ViewModel.CleanupCandidatesOnly = CleanupCheckBox.IsChecked == true;
+        TreemapCanvas.Invalidate();
     }
 
     private async void About_Click(object sender, RoutedEventArgs e)
@@ -330,7 +356,7 @@ public sealed partial class MainPage : Page
 
     // ---------- Reports & snapshots ----------
 
-    private void DiffButton_Click(object sender, RoutedEventArgs e) => OpenDiffReport();
+    private void Report_Diff(object sender, RoutedEventArgs e) => OpenDiffReport();
 
     private void OpenDiffReport()
     {
@@ -339,7 +365,8 @@ public sealed partial class MainPage : Page
             ViewModel.StatusText = "No previous scan of this target to diff against yet.";
             return;
         }
-        string html = DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(current, baseline);
+        string html = DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(current, baseline,
+            ViewModel.AutoBaselinePath is { } p ? $"auto-saved snapshot — {p}" : "auto-saved snapshot");
         string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-diff-{DateTime.Now:yyyyMMdd-HHmmss}.html");
         File.WriteAllText(path, html);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
@@ -391,7 +418,8 @@ public sealed partial class MainPage : Page
             if (result is null)
                 return;
             string html = await Task.Run(() =>
-                DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, ViewModel.AutoBaseline));
+                DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, ViewModel.AutoBaseline,
+                    ViewModel.AutoBaselinePath is { } p ? $"auto-saved snapshot — {p}" : null));
             await File.WriteAllTextAsync(result.Path, html);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.Path) { UseShellExecute = true });
             ViewModel.StatusText = $"Report saved to {result.Path}";
@@ -419,7 +447,7 @@ public sealed partial class MainPage : Page
             string html = await Task.Run(() =>
             {
                 var baseline = DriveVisualizer.Core.Snapshots.ScanSnapshot.Load(result.Path);
-                return DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, baseline);
+                return DriveVisualizer.Core.Snapshots.ReportGenerator.BuildHtml(snapshot, baseline, result.Path);
             });
             string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-compare-{DateTime.Now:yyyyMMdd-HHmmss}.html");
             await File.WriteAllTextAsync(path, html);
@@ -435,6 +463,37 @@ public sealed partial class MainPage : Page
 
     private NodeRow? RowFrom(object sender) =>
         (sender as FrameworkElement)?.DataContext as NodeRow ?? ViewModel.SelectedRow;
+
+    /// <summary>Per-target menu shaping: no compress for archives, refresh only for folders.</summary>
+    private void RowMenu_Opening(object sender, object e)
+    {
+        if (sender is not Microsoft.UI.Xaml.Controls.MenuFlyout menu)
+            return;
+        var row = (menu.Target as FrameworkElement)?.DataContext as NodeRow ?? ViewModel.SelectedRow;
+        foreach (var item in menu.Items)
+        {
+            if (item is not MenuFlyoutItem mi || mi.Tag is not string tag)
+                continue;
+            mi.Visibility = tag switch
+            {
+                "compress" => row?.Node is { Parent: not null } n &&
+                              !(n.IsDirectory is false && FileCategories.Classify(n.Name) == FileCategory.Archives)
+                    ? Visibility.Visible : Visibility.Collapsed,
+                "refresh" => row?.Node.IsDirectory == true
+                    ? Visibility.Visible : Visibility.Collapsed,
+                _ => mi.Visibility,
+            };
+        }
+    }
+
+    private async void Menu_RefreshFolder(object sender, RoutedEventArgs e)
+    {
+        if (RowFrom(sender)?.Node is { } node && node.IsDirectory)
+            await ViewModel.RefreshFolderAsync(node);
+    }
+
+    private void WatchCheckBox_Toggled(object sender, RoutedEventArgs e) =>
+        ViewModel.WatchForChanges = WatchCheckBox.IsChecked == true;
 
     private void Menu_Open(object sender, RoutedEventArgs e)
     {
@@ -536,6 +595,12 @@ public sealed partial class MainPage : Page
         if (row?.Node is not { Parent: not null } node || ViewModel.IsScanning)
             return;
 
+        if (!node.IsDirectory && FileCategories.Classify(node.Name) == FileCategory.Archives)
+        {
+            ViewModel.StatusText = $"{node.Name} is already compressed — compressing it again wouldn't help.";
+            return;
+        }
+
         string path = node.GetFullPath();
         string zipPath = Services.ZipCompressor.MakeZipPath(path);
         bool confirmed = await ConfirmAsync("Compress and delete original?",
@@ -624,7 +689,8 @@ public sealed partial class MainPage : Page
             var r = tile.Rect;
 
             bool filteredOut = !tile.IsAggregate && !tile.Node.IsDirectory &&
-                !ViewModel.IsCategoryEnabled(FileCategories.Classify(tile.Node.Name));
+                (!ViewModel.IsCategoryEnabled(FileCategories.Classify(tile.Node.Name)) ||
+                 (ViewModel.CleanupCandidatesOnly && !tile.Node.Flags.HasFlag(NodeFlags.CleanupCandidate)));
             if (filteredOut)
             {
                 // Ghost of the original color, so it reads as "dimmed", not recolored.
@@ -651,6 +717,42 @@ public sealed partial class MainPage : Page
         {
             if (dir != _treemapRoot && rect.Width > 24 && rect.Height > 24)
                 ds.DrawRectangle(rect.X, rect.Y, rect.Width, rect.Height, dirOutline, 1.5f);
+        }
+
+        // Folder names on regions large enough to fit them, so the nesting reads at a
+        // glance. A child whose corner coincides with a labeled ancestor stays quiet —
+        // otherwise nested labels overprint into garble.
+        bool IsLabelable(FsNode d, RectangleF rr) =>
+            !ReferenceEquals(d, _treemapRoot) && rr.Width >= 72 && rr.Height >= 30;
+
+        foreach (var (dir, rect) in treemap.DirectoryBounds)
+        {
+            if (!IsLabelable(dir, rect))
+                continue;
+
+            bool suppressed = false;
+            for (var ancestor = dir.Parent; ancestor is not null; ancestor = ancestor.Parent)
+            {
+                if (treemap.DirectoryBounds.TryGetValue(ancestor, out var ar) && IsLabelable(ancestor, ar) &&
+                    Math.Abs(ar.X - rect.X) < 10 && Math.Abs(ar.Y - rect.Y) < 18)
+                {
+                    suppressed = true;
+                    break;
+                }
+            }
+            if (suppressed)
+                continue;
+
+            // Dark backing pill sized to the text keeps labels readable over any mosaic.
+            using var layout = new Microsoft.Graphics.Canvas.Text.CanvasTextLayout(
+                ds, dir.Name, DirLabelFormat, Math.Max(8f, rect.Width - 10f), 18f);
+            float textWidth = (float)layout.LayoutBounds.Width;
+            using var clip = ds.CreateLayer(1f, new Windows.Foundation.Rect(rect.X, rect.Y, rect.Width - 2, rect.Height));
+            ds.FillRoundedRectangle(
+                rect.X + 2f, rect.Y + 2f,
+                Math.Min(textWidth + 10f, rect.Width - 5f), 17f,
+                3f, 3f, Color.FromArgb(165, 10, 10, 10));
+            ds.DrawTextLayout(layout, rect.X + 7f, rect.Y + 2f, Color.FromArgb(240, 255, 255, 255));
         }
 
         // Selection highlight: a directory gets its recorded bounds, a file its tile.

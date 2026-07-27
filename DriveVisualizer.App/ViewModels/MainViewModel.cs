@@ -68,7 +68,37 @@ public partial class MainViewModel : ObservableObject
     /// <summary>The auto-saved snapshot from the previous scan of the same target, if any.</summary>
     public ScanSnapshot? AutoBaseline { get; private set; }
 
-    private static string AutoSnapshotPath(string target)
+    /// <summary>Disk path the auto-baseline was loaded from (for report provenance).</summary>
+    public string? AutoBaselinePath { get; private set; }
+
+    /// <summary>Per-directory allocated-size change vs <see cref="AutoBaseline"/>.</summary>
+    private Dictionary<FsNode, long>? _dirDeltas;
+
+    private long? GetDelta(FsNode node) =>
+        _dirDeltas is { } deltas && deltas.TryGetValue(node, out long d) ? d : null;
+
+    /// <summary>"vs scan from &lt;date&gt;" — what the Change column is measured against.</summary>
+    [ObservableProperty]
+    public partial string ChangeBaselineText { get; set; }
+
+    /// <summary>When on, the tree shows only files flagged by CleanupHeuristics; the map ghosts the rest.</summary>
+    [ObservableProperty]
+    public partial bool CleanupCandidatesOnly { get; set; }
+
+    partial void OnCleanupCandidatesOnlyChanged(bool value)
+    {
+        if (_root is null)
+            return;
+        if (value)
+        {
+            var (bytes, count) = CleanupHeuristics.MarkCandidates(_root);
+            StatusText = $"Cleanup candidates: {ByteFormatter.Format(bytes)} in {count:N0} files " +
+                         "(temp folders, caches, logs, recycle bin, node_modules)";
+        }
+        RebuildAllRows();
+    }
+
+    public static string GetAutoSnapshotDirectory()
     {
         string baseDir;
         try
@@ -79,9 +109,14 @@ public partial class MainViewModel : ObservableObject
         {
             baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveVisualizer");
         }
+        return Path.Combine(baseDir, "autosnap");
+    }
+
+    private static string AutoSnapshotPath(string target)
+    {
         var invalid = Path.GetInvalidFileNameChars();
         string safe = new([.. target.Select(c => invalid.Contains(c) ? '_' : c)]);
-        return Path.Combine(baseDir, "autosnap", safe + ".dvsnap");
+        return Path.Combine(GetAutoSnapshotDirectory(), safe + ".dvsnap");
     }
 
     private readonly HashSet<FileCategory> _enabledCategories =
@@ -120,10 +155,16 @@ public partial class MainViewModel : ObservableObject
         Categories = [];
         StatusText = "Pick a drive or folder and press Scan.";
         SelectionText = "";
+        ChangeBaselineText = "";
 
         _progressTimer = dispatcher.CreateTimer();
         _progressTimer.Interval = TimeSpan.FromMilliseconds(300);
         _progressTimer.Tick += (_, _) => ProgressTick();
+
+        _watchTimer = dispatcher.CreateTimer();
+        _watchTimer.Interval = TimeSpan.FromMilliseconds(2500);
+        _watchTimer.IsRepeating = true;
+        _watchTimer.Tick += (_, _) => WatchTick();
 
         foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady))
             Targets.Add(drive.Name);
@@ -146,11 +187,15 @@ public partial class MainViewModel : ObservableObject
             return;
 
         IsScanning = true;
+        StopWatcher();
         _root = null;
         ScanRoot = null;
         LiveRoot = null;
         CurrentSnapshot = null;
         AutoBaseline = null;
+        AutoBaselinePath = null;
+        _dirDeltas = null;
+        ChangeBaselineText = "";
         Rows = [];
         SelectedRow = null;
         _expanded.Clear();
@@ -189,14 +234,23 @@ public partial class MainViewModel : ObservableObject
                 string target = SelectedTarget!;
                 var scanRoot = _root;
                 bool autoSave = Services.AppSettings.AutoSaveSnapshots;
-                var (snapshot, previous) = await Task.Run(() =>
+                var (snapshot, previous, baselinePath, deltas) = await Task.Run(() =>
                 {
                     var snap = ScanSnapshot.Build(scanRoot, target, DateTime.UtcNow);
                     ScanSnapshot? prev = null;
+                    string? prevPath = null;
                     if (autoSave)
                     {
                         string autoPath = AutoSnapshotPath(target);
-                        try { if (File.Exists(autoPath)) prev = ScanSnapshot.Load(autoPath); } catch { }
+                        try
+                        {
+                            if (File.Exists(autoPath))
+                            {
+                                prev = ScanSnapshot.Load(autoPath);
+                                prevPath = autoPath;
+                            }
+                        }
+                        catch { }
                         try
                         {
                             Directory.CreateDirectory(Path.GetDirectoryName(autoPath)!);
@@ -204,10 +258,19 @@ public partial class MainViewModel : ObservableObject
                         }
                         catch { }
                     }
-                    return (snap, prev);
+                    var dirDeltas = prev is null ? null : ComputeDirDeltas(scanRoot, prev);
+                    return (snap, prev, prevPath, dirDeltas);
                 });
                 CurrentSnapshot = snapshot;
                 AutoBaseline = previous;
+                AutoBaselinePath = baselinePath;
+                _dirDeltas = deltas;
+                if (deltas is not null && previous is not null)
+                {
+                    ChangeBaselineText = $"vs scan from {previous.TimestampUtc.ToLocalTime():g}";
+                    RebuildAllRows(); // repopulate the Change column now that deltas exist
+                    StatusText += $" — Change {ChangeBaselineText}";
+                }
             }
         }
         catch (Exception ex)
@@ -220,6 +283,8 @@ public partial class MainViewModel : ObservableObject
             IsScanning = false;
             _cts?.Dispose();
             _cts = null;
+            if (WatchForChanges && _root is not null)
+                StartWatcher();
         }
     }
 
@@ -256,7 +321,7 @@ public partial class MainViewModel : ObservableObject
             if (i < Rows.Count && ReferenceEquals(Rows[i].Node, node))
                 Rows[i].Refresh();
             else
-                Rows.Insert(i, new NodeRow(node, depth, _expanded.Contains(node)));
+                Rows.Insert(i, new NodeRow(node, depth, _expanded.Contains(node), GetDelta(node)));
             i++;
         }
         while (Rows.Count > i)
@@ -267,8 +332,19 @@ public partial class MainViewModel : ObservableObject
     {
         var rows = new ObservableCollection<NodeRow>();
         foreach (var (node, depth) in WalkVisible())
-            rows.Add(new NodeRow(node, depth, _expanded.Contains(node)));
+            rows.Add(new NodeRow(node, depth, _expanded.Contains(node), GetDelta(node)));
         Rows = rows;
+    }
+
+    private bool IsFileFilteredOut(FsNode node)
+    {
+        if (node.IsDirectory)
+            return false;
+        if (FilterActive && !_enabledCategories.Contains(FileClassification.Classify(node.Name)))
+            return true;
+        if (CleanupCandidatesOnly && !node.Flags.HasFlag(NodeFlags.CleanupCandidate))
+            return true;
+        return false;
     }
 
     private IEnumerable<(FsNode Node, int Depth)> WalkVisible()
@@ -287,8 +363,7 @@ public partial class MainViewModel : ObservableObject
                 for (int c = children.Length - 1; c >= 0; c--)
                 {
                     var child = children[c];
-                    if (FilterActive && !child.IsDirectory &&
-                        !_enabledCategories.Contains(FileClassification.Classify(child.Name)))
+                    if (IsFileFilteredOut(child))
                         continue;
                     stack.Push((child, depth + 1));
                 }
@@ -335,10 +410,9 @@ public partial class MainViewModel : ObservableObject
             return;
         foreach (var child in children)
         {
-            if (FilterActive && !child.IsDirectory &&
-                !_enabledCategories.Contains(FileClassification.Classify(child.Name)))
+            if (IsFileFilteredOut(child))
                 continue;
-            output.Add(new NodeRow(child, depth + 1, _expanded.Contains(child)));
+            output.Add(new NodeRow(child, depth + 1, _expanded.Contains(child), GetDelta(child)));
             if (_expanded.Contains(child))
                 CollectVisibleSubtree(child, depth + 1, output);
         }
@@ -357,10 +431,262 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Matches every directory in the fresh tree against the baseline snapshot
+    /// by full path and records the allocated-size change (new dirs count fully).
+    /// </summary>
+    private static Dictionary<FsNode, long> ComputeDirDeltas(FsNode root, ScanSnapshot baseline)
+    {
+        var baselinePaths = baseline.BuildDirectoryPaths();
+        var baselineByPath = new Dictionary<string, long>(baseline.Directories.Count, StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < baseline.Directories.Count; i++)
+            baselineByPath[baselinePaths[i]] = baseline.Directories[i].AllocatedSize;
+
+        var deltas = new Dictionary<FsNode, long>();
+        var stack = new Stack<(FsNode Node, string Path)>();
+        stack.Push((root, root.Name));
+        while (stack.Count > 0)
+        {
+            var (node, path) = stack.Pop();
+            long before = baselineByPath.TryGetValue(path, out long b) ? b : 0;
+            long delta = node.AllocatedSize - before;
+            if (delta != 0)
+                deltas[node] = delta;
+
+            if (node.Children is { } children)
+                foreach (var child in children)
+                    if (child.IsDirectory)
+                        stack.Push((child, path.TrimEnd('\\') + '\\' + child.Name));
+        }
+        return deltas;
+    }
+
+    // ---------- Folder refresh & change watching ----------
+
+    private FileSystemWatcher? _watcher;
+    private readonly object _pendingLock = new();
+    private readonly HashSet<string> _pendingDirs = new(StringComparer.OrdinalIgnoreCase);
+    private bool _watcherOverflowed;
+    private bool _refreshBusy;
+    private readonly DispatcherQueueTimer _watchTimer;
+
+    /// <summary>When on, file-system changes under the scanned target refresh affected folders automatically.</summary>
+    [ObservableProperty]
+    public partial bool WatchForChanges { get; set; }
+
+    partial void OnWatchForChangesChanged(bool value)
+    {
+        if (value)
+        {
+            StartWatcher();
+            if (_watcher is not null)
+                StatusText = $"Watching {_root?.Name} for changes";
+        }
+        else
+        {
+            StopWatcher();
+        }
+    }
+
+    private void StartWatcher()
+    {
+        StopWatcher();
+        if (_root is null || ScanRoot is null)
+            return;
+        try
+        {
+            _watcher = new FileSystemWatcher(_root.Name)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.Size | NotifyFilters.LastWrite,
+            };
+            _watcher.Created += (_, e) => QueueChangedPath(e.FullPath);
+            _watcher.Deleted += (_, e) => QueueChangedPath(e.FullPath);
+            _watcher.Changed += (_, e) => QueueChangedPath(e.FullPath);
+            _watcher.Renamed += (_, e) => { QueueChangedPath(e.OldFullPath); QueueChangedPath(e.FullPath); };
+            _watcher.Error += (_, _) => _watcherOverflowed = true;
+            _watcher.EnableRaisingEvents = true;
+            _watchTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not watch for changes: {ex.Message}";
+            WatchForChanges = false;
+        }
+    }
+
+    private void StopWatcher()
+    {
+        _watchTimer.Stop();
+        _watcher?.Dispose();
+        _watcher = null;
+        lock (_pendingLock)
+            _pendingDirs.Clear();
+    }
+
+    private void QueueChangedPath(string fullPath)
+    {
+        string? dir = Path.GetDirectoryName(fullPath);
+        if (dir is null)
+            return;
+        lock (_pendingLock)
+        {
+            if (_pendingDirs.Count < 512)
+                _pendingDirs.Add(dir);
+        }
+    }
+
+    private async void WatchTick()
+    {
+        if (_refreshBusy || IsScanning || _root is null)
+            return;
+
+        if (_watcherOverflowed)
+        {
+            _watcherOverflowed = false;
+            StatusText = "Many changes detected — consider a full rescan.";
+        }
+
+        List<string> dirs;
+        lock (_pendingLock)
+        {
+            if (_pendingDirs.Count == 0)
+                return;
+            dirs = [.. _pendingDirs];
+            _pendingDirs.Clear();
+        }
+
+        // Skip paths nested under another pending path (the ancestor rescan covers them).
+        dirs.Sort(StringComparer.OrdinalIgnoreCase);
+        var top = new List<string>();
+        foreach (var d in dirs)
+            if (top.Count == 0 || !d.StartsWith(top[^1].TrimEnd('\\') + '\\', StringComparison.OrdinalIgnoreCase))
+                top.Add(d);
+
+        _refreshBusy = true;
+        try
+        {
+            int refreshed = 0;
+            foreach (var dir in top.Take(12))
+                if (FindNodeByPath(dir) is { } node && await RefreshFolderCoreAsync(node))
+                    refreshed++;
+            if (refreshed > 0)
+            {
+                AfterTreeMutation();
+                StatusText = $"Auto-refreshed {refreshed} changed folder{(refreshed == 1 ? "" : "s")} — {ByteFormatter.Format(_root.AllocatedSize)} total";
+            }
+        }
+        finally
+        {
+            _refreshBusy = false;
+        }
+    }
+
+    /// <summary>Finds the tree node for an absolute path, or null if not part of this scan.</summary>
+    public FsNode? FindNodeByPath(string fullPath)
+    {
+        if (_root is null)
+            return null;
+        string rootPath = _root.Name.TrimEnd('\\');
+        if (!fullPath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (fullPath.Length <= rootPath.Length + 1)
+            return _root;
+
+        var node = _root;
+        foreach (var segment in fullPath[(rootPath.Length + 1)..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = node.Children?.FirstOrDefault(c =>
+                string.Equals(c.Name, segment, StringComparison.OrdinalIgnoreCase));
+            if (next is null)
+                return null;
+            node = next;
+        }
+        return node;
+    }
+
+    /// <summary>Rescans one folder's subtree and grafts the fresh result into the tree.</summary>
+    public async Task RefreshFolderAsync(FsNode dir)
+    {
+        if (IsScanning || _refreshBusy)
+            return;
+        _refreshBusy = true;
+        try
+        {
+            StatusText = $"Rescanning {dir.Name}…";
+            if (await RefreshFolderCoreAsync(dir))
+            {
+                AfterTreeMutation();
+                StatusText = $"Rescanned {dir.Name} — now {ByteFormatter.Format(dir.AllocatedSize)}";
+            }
+            else
+            {
+                StatusText = $"Could not rescan {dir.Name}";
+            }
+        }
+        finally
+        {
+            _refreshBusy = false;
+        }
+    }
+
+    private async Task<bool> RefreshFolderCoreAsync(FsNode dir)
+    {
+        if (!dir.IsDirectory || dir.IsReparsePoint)
+            return false;
+        string path = dir.GetFullPath();
+        if (!Directory.Exists(path))
+        {
+            RemoveNodeCore(dir);
+            return true;
+        }
+
+        try
+        {
+            var scanner = new ParallelScanner();
+            var result = await scanner.ScanAsync(path);
+            var fresh = result.Root;
+            await Task.Run(() => SortChildrenBySize(fresh));
+
+            long deltaAlloc = fresh.AllocatedSize - dir.AllocatedSize;
+            long deltaLogical = fresh.LogicalSize - dir.LogicalSize;
+            int deltaFiles = fresh.SubtreeFileCount - dir.SubtreeFileCount;
+
+            dir.Children = fresh.Children;
+            if (dir.Children is { } children)
+                foreach (var child in children)
+                    child.Parent = dir;
+            dir.LogicalSize = fresh.LogicalSize;
+            dir.AllocatedSize = fresh.AllocatedSize;
+            dir.SubtreeFileCount = fresh.SubtreeFileCount;
+            dir.Flags = fresh.Flags;
+
+            for (FsNode? n = dir.Parent; n is not null; n = n.Parent)
+            {
+                n.AllocatedSize += deltaAlloc;
+                n.LogicalSize += deltaLogical;
+                n.SubtreeFileCount += deltaFiles;
+            }
+            if (CleanupCandidatesOnly)
+                CleanupHeuristics.MarkCandidates(dir);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Removes a deleted node from the model: detaches it, subtracts its sizes
     /// from every ancestor, and refreshes rows, legend, and treemap.
     /// </summary>
     public void RemoveNode(FsNode node)
+    {
+        RemoveNodeCore(node);
+        AfterTreeMutation();
+    }
+
+    private void RemoveNodeCore(FsNode node)
     {
         if (node.Parent is not { } parent)
             return;
@@ -378,7 +704,6 @@ public partial class MainViewModel : ObservableObject
         }
         _expanded.Remove(node);
         SelectedRow = null;
-        AfterTreeMutation();
     }
 
     /// <summary>Adds a newly created file (e.g. the zip from compress-and-delete) to the model.</summary>

@@ -17,6 +17,9 @@ public partial class ColumnPrefs : ObservableObject
     public partial bool ShowSize { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowChange { get; set; }
+
+    [ObservableProperty]
     public partial bool ShowFiles { get; set; }
 
     [ObservableProperty]
@@ -26,6 +29,7 @@ public partial class ColumnPrefs : ObservableObject
     {
         ShowPercent = true;
         ShowSize = true;
+        ShowChange = true;
         ShowFiles = true;
         ShowModified = true;
     }

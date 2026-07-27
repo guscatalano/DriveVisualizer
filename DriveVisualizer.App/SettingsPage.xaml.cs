@@ -26,6 +26,8 @@ public sealed partial class SettingsPage : Page
         AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
         SizeDetailCombo.SelectedIndex = (int)ByteFormatter.Detail;
         ThemeCombo.SelectedIndex = Math.Clamp(Services.AppSettings.Theme, 0, 2);
+        FrequencyCombo.SelectedIndex = Math.Clamp(Services.AppSettings.SnapshotFrequency, 0, 3);
+        RetentionCombo.SelectedIndex = Math.Clamp(Services.AppSettings.SnapshotRetention, 0, 5);
 
         string version;
         try
@@ -66,6 +68,18 @@ public sealed partial class SettingsPage : Page
             return;
         Services.AppSettings.Theme = ThemeCombo.SelectedIndex;
         ApplyTheme(ThemeCombo.SelectedIndex);
+    }
+
+    private void Frequency_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && FrequencyCombo.SelectedIndex >= 0)
+            Services.AppSettings.SnapshotFrequency = FrequencyCombo.SelectedIndex;
+    }
+
+    private void Retention_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && RetentionCombo.SelectedIndex >= 0)
+            Services.AppSettings.SnapshotRetention = RetentionCombo.SelectedIndex;
     }
 
     private void SizeDetail_Changed(object sender, SelectionChangedEventArgs e)

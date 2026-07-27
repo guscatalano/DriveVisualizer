@@ -92,21 +92,63 @@
             </Border>
 
             <Border Style="{StaticResource CardStyle}">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Snapshot data" Style="{StaticResource CardTitleStyle}" />
-                        <TextBlock Style="{StaticResource CardDescStyle}"
-                                   Text="One folder holds the last-scan baseline and the daily size history." />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button Content="Open folder" Click="OpenHistory_Click" />
-                        <Button Content="Clear…" Click="ClearHistory_Click" />
-                    </StackPanel>
-                </Grid>
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Snapshot frequency" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}"
+                                       Text="How often a completed scan creates a new history entry (scans within the same period update it)." />
+                        </StackPanel>
+                        <ComboBox x:Name="FrequencyCombo" Grid.Column="1" MinWidth="190" VerticalAlignment="Center"
+                                  SelectionChanged="Frequency_Changed">
+                            <ComboBoxItem Content="Every scan" />
+                            <ComboBoxItem Content="At most hourly" />
+                            <ComboBoxItem Content="At most daily" />
+                            <ComboBoxItem Content="At most weekly" />
+                        </ComboBox>
+                    </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Keep snapshots" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}"
+                                       Text="Older snapshots are pruned after each scan; the newest is always kept as the diff baseline." />
+                        </StackPanel>
+                        <ComboBox x:Name="RetentionCombo" Grid.Column="1" MinWidth="190" VerticalAlignment="Center"
+                                  SelectionChanged="Retention_Changed">
+                            <ComboBoxItem Content="Unlimited" />
+                            <ComboBoxItem Content="Last 10" />
+                            <ComboBoxItem Content="Last 50" />
+                            <ComboBoxItem Content="Last 30 days" />
+                            <ComboBoxItem Content="Last 90 days" />
+                            <ComboBoxItem Content="Last year" />
+                        </ComboBox>
+                    </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Snapshot data" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}"
+                                       Text="One folder holds the last-scan baseline and the size history." />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Open folder" Click="OpenHistory_Click" />
+                            <Button Content="Clear…" Click="ClearHistory_Click" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Style="{StaticResource CardDescStyle}"
+                               Text="⚠ Snapshots are only taken when a scan completes — DriveVisualizer has no background service, so it must be running (and scanning) for history to accumulate." />
+                </StackPanel>
             </Border>
 
             <Border Style="{StaticResource CardStyle}">

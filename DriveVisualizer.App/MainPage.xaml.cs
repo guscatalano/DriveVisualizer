@@ -372,13 +372,14 @@ public sealed partial class MainPage : Page
                 {
                     Title = "Size history — how it works",
                     Content =
-                        "Every day you run a scan, DriveVisualizer keeps one snapshot of that day's totals " +
-                        "(overall size plus each category: apps, temp files, disk images, …).\n\n" +
-                        "Once you've scanned on two or more different days, this menu turns those daily snapshots " +
-                        "into a chart — one stacked bar per day — so you can see whether the drive is filling up " +
-                        "over time and which kind of files are doing it.\n\n" +
-                        $"Recorded so far: {files.Length} day{(files.Length == 1 ? "" : "s")} for {current.Target}. " +
-                        "Scan again on another day and the chart will appear here." + autoSaveNote,
+                        "Each completed scan records a snapshot of the drive's totals (overall size plus " +
+                        "each category: apps, temp files, disk images, …). How often a new snapshot is kept " +
+                        "— per scan, hour, day, or week — is set in Settings, along with how many to retain.\n\n" +
+                        "Once two or more snapshots exist, this menu turns them into a chart with per-category " +
+                        "breakdowns and the folders that changed between snapshots.\n\n" +
+                        $"Recorded so far: {files.Length} snapshot{(files.Length == 1 ? "" : "s")} for {current.Target}. " +
+                        "Note: snapshots are only taken while the app is running a scan — there is no background service." +
+                        autoSaveNote,
                     CloseButtonText = "Got it",
                     DefaultButton = ContentDialogButton.Close,
                     XamlRoot = XamlRoot,

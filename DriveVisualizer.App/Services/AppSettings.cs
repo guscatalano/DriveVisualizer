@@ -118,6 +118,21 @@ public static class AppSettings
         set => SetBool(nameof(SideBySideLayout), value);
     }
 
+    /// <summary>How often a completed scan creates a NEW snapshot instead of overwriting:
+    /// 0 every scan, 1 hourly, 2 daily (default), 3 weekly.</summary>
+    public static int SnapshotFrequency
+    {
+        get => GetInt(nameof(SnapshotFrequency), 2);
+        set => SetInt(nameof(SnapshotFrequency), value);
+    }
+
+    /// <summary>Retention: 0 unlimited, 1 last 10, 2 last 50, 3 30 days, 4 90 days, 5 one year.</summary>
+    public static int SnapshotRetention
+    {
+        get => GetInt(nameof(SnapshotRetention), 0);
+        set => SetInt(nameof(SnapshotRetention), value);
+    }
+
     /// <summary>App theme: 0 system, 1 light, 2 dark.</summary>
     public static int Theme
     {

@@ -127,6 +127,53 @@ public partial class MainViewModel : ObservableObject
     public static string GetHistoryDirectory(string target) =>
         Path.Combine(GetHistoryRootDirectory(), SanitizeTarget(target));
 
+    /// <summary>
+    /// Filename granularity controls how often a NEW snapshot appears: scans
+    /// within the same period overwrite that period's file.
+    /// </summary>
+    private static string SnapshotFileName(int frequency)
+    {
+        var now = DateTime.Now;
+        return frequency switch
+        {
+            0 => $"{now:yyyy-MM-dd_HHmmss}.dvsnap",                                              // every scan
+            1 => $"{now:yyyy-MM-dd_HH}h.dvsnap",                                                 // hourly
+            3 => $"{System.Globalization.ISOWeek.GetYear(now)}-W{System.Globalization.ISOWeek.GetWeekOfYear(now):D2}.dvsnap", // weekly
+            _ => $"{now:yyyy-MM-dd}.dvsnap",                                                     // daily
+        };
+    }
+
+    /// <summary>Prunes a target's snapshots per the retention setting (newest always kept).</summary>
+    private static void ApplyRetention(string historyDir, int retention)
+    {
+        if (retention == 0)
+            return;
+
+        int keepCount = retention switch { 1 => 10, 2 => 50, _ => int.MaxValue };
+        DateTime cutoffUtc = retention switch
+        {
+            3 => DateTime.UtcNow.AddDays(-30),
+            4 => DateTime.UtcNow.AddDays(-90),
+            5 => DateTime.UtcNow.AddDays(-365),
+            _ => DateTime.MinValue,
+        };
+
+        var files = Directory.GetFiles(historyDir, "*.dvsnap")
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(f => f.LastWriteTimeUtc)
+            .ToList();
+
+        for (int i = 0; i < files.Count; i++)
+        {
+            if (i == 0)
+                continue; // newest is the diff baseline — always kept
+            if (i >= keepCount || files[i].LastWriteTimeUtc < cutoffUtc)
+            {
+                try { files[i].Delete(); } catch { }
+            }
+        }
+    }
+
     private readonly HashSet<FileCategory> _enabledCategories =
         [.. Rendering.FileCategories.All.Select(c => c.Category)];
 
@@ -243,6 +290,8 @@ public partial class MainViewModel : ObservableObject
                 string target = SelectedTarget!;
                 var scanRoot = _root;
                 bool autoSave = Services.AppSettings.AutoSaveSnapshots;
+                int frequency = Services.AppSettings.SnapshotFrequency;
+                int retention = Services.AppSettings.SnapshotRetention;
                 var (snapshot, previous, baselinePath, deltas) = await Task.Run(() =>
                 {
                     var snap = ScanSnapshot.Build(scanRoot, target, DateTime.UtcNow);
@@ -250,16 +299,15 @@ public partial class MainViewModel : ObservableObject
                     string? prevPath = null;
                     if (autoSave)
                     {
-                        // Single store: the daily history folder. The newest entry IS
-                        // the previous scan (dated filenames sort chronologically), so
-                        // no separate "last scan" copy is kept.
+                        // Single store: the history folder. The newest entry IS the
+                        // previous scan, so no separate "last scan" copy is kept.
                         string historyDir = GetHistoryDirectory(target);
                         try
                         {
                             if (Directory.Exists(historyDir))
                             {
                                 prevPath = Directory.GetFiles(historyDir, "*.dvsnap")
-                                    .OrderByDescending(f => f, StringComparer.OrdinalIgnoreCase)
+                                    .OrderByDescending(File.GetLastWriteTimeUtc)
                                     .FirstOrDefault();
                                 if (prevPath is not null)
                                     prev = ScanSnapshot.Load(prevPath);
@@ -269,7 +317,8 @@ public partial class MainViewModel : ObservableObject
                         try
                         {
                             Directory.CreateDirectory(historyDir);
-                            snap.Save(Path.Combine(historyDir, $"{DateTime.Now:yyyy-MM-dd}.dvsnap"));
+                            snap.Save(Path.Combine(historyDir, SnapshotFileName(frequency)));
+                            ApplyRetention(historyDir, retention);
                         }
                         catch { }
                     }

@@ -10,8 +10,11 @@ namespace DriveVisualizer.Core.Snapshots;
 /// </summary>
 public static class ReportGenerator
 {
-    // Same hues the app's treemap legend uses (dark-surface categorical palette).
-    private static readonly string[] CategoryHex =
+    // Category hues per surface: light-surface steps and the dark-surface steps
+    // the app's treemap legend uses (same validated categorical palette).
+    private static readonly string[] CategoryHexLight =
+        ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948", "#6b6b68"];
+    private static readonly string[] CategoryHexDark =
         ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767", "#6b6b68"];
 
     public static string BuildHtml(ScanSnapshot current, ScanSnapshot? baseline = null)
@@ -19,32 +22,49 @@ public static class ReportGenerator
         var sb = new StringBuilder(64 * 1024);
         string title = $"DriveVisualizer report — {WebUtility.HtmlEncode(current.Target)}";
 
+        var catVarsLight = string.Join(" ", CategoryHexLight.Select((h, i) => $"--cat{i}: {h};"));
+        var catVarsDark = string.Join(" ", CategoryHexDark.Select((h, i) => $"--cat{i}: {h};"));
+
         sb.Append($$"""
             <!doctype html>
             <html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>{{title}}</title>
             <style>
-              :root { color-scheme: light; }
-              body { font: 14px/1.5 system-ui, "Segoe UI", sans-serif; color: #0b0b0b; background: #f9f9f7; margin: 0; }
+              :root {
+                color-scheme: light dark;
+                --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e;
+                --grid: #e1e0d9; --border: rgba(11,11,11,.10); --track: #e1e0d9;
+                --pos: #b91c1c; --neg: #006300;
+                {{catVarsLight}}
+              }
+              @media (prefers-color-scheme: dark) {
+                :root {
+                  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7;
+                  --grid: #2c2c2a; --border: rgba(255,255,255,.10); --track: #383835;
+                  --pos: #e66767; --neg: #0ca30c;
+                  {{catVarsDark}}
+                }
+              }
+              body { font: 14px/1.5 system-ui, "Segoe UI", sans-serif; color: var(--ink); background: var(--page); margin: 0; }
               .page { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
               h1 { font-size: 22px; margin: 0 0 4px; }
               h2 { font-size: 16px; margin: 32px 0 8px; }
-              .muted { color: #52514e; }
+              .muted { color: var(--ink2); }
               .tiles { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
-              .tile { background: #fcfcfb; border: 1px solid rgba(11,11,11,.10); border-radius: 8px; padding: 12px 16px; min-width: 150px; }
+              .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 150px; }
               .tile .v { font-size: 22px; font-weight: 600; }
               .tile .d { font-size: 12px; }
-              table { border-collapse: collapse; width: 100%; background: #fcfcfb; border: 1px solid rgba(11,11,11,.10); border-radius: 8px; }
-              th, td { text-align: left; padding: 6px 10px; border-top: 1px solid #e1e0d9; font-variant-numeric: tabular-nums; }
-              thead th { border-top: none; font-size: 12px; color: #52514e; }
+              table { border-collapse: collapse; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+              th, td { text-align: left; padding: 6px 10px; border-top: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+              thead th { border-top: none; font-size: 12px; color: var(--ink2); }
               td.num, th.num { text-align: right; white-space: nowrap; }
               .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
-              .bar { background: #e1e0d9; border-radius: 3px; height: 8px; min-width: 120px; }
+              .bar { background: var(--track); border-radius: 3px; height: 8px; min-width: 120px; }
               .bar > i { display: block; height: 8px; border-radius: 3px; }
-              .pos { color: #b91c1c; } .neg { color: #006300; }
+              .pos { color: var(--pos); } .neg { color: var(--neg); }
               .path { word-break: break-all; }
-              @media print { body { background: #fff; } .page { padding: 0; } }
+              @media print { body { background: #fff; color: #0b0b0b; } .page { padding: 0; } }
             </style></head><body><div class="page">
             """);
 
@@ -103,9 +123,9 @@ public static class ReportGenerator
             if (size <= 0)
                 continue;
             double pct = current.TotalAllocated > 0 ? 100.0 * size / current.TotalAllocated : 0;
-            string hex = CategoryHex[Math.Min(i, CategoryHex.Length - 1)];
-            sb.Append($"<tr><td><span class=\"swatch\" style=\"background:{hex}\"></span>{WebUtility.HtmlEncode(FileClassification.DisplayNames[i])}</td>");
-            sb.Append($"<td><div class=\"bar\"><i style=\"width:{pct:F1}%;background:{hex}\"></i></div></td>");
+            string colorVar = $"var(--cat{Math.Min(i, CategoryHexDark.Length - 1)})";
+            sb.Append($"<tr><td><span class=\"swatch\" style=\"background:{colorVar}\"></span>{WebUtility.HtmlEncode(FileClassification.DisplayNames[i])}</td>");
+            sb.Append($"<td><div class=\"bar\"><i style=\"width:{pct:F1}%;background:{colorVar}\"></i></div></td>");
             sb.Append($"<td class=\"num\">{ByteFormatter.Format(size)} ({pct:F1}%)</td>");
             if (baseline is not null)
             {

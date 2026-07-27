@@ -78,7 +78,7 @@
             </Button>
             <Button Content="Columns">
                 <Button.Flyout>
-                    <MenuFlyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
                         <ToggleMenuFlyoutItem Text="% of parent" IsChecked="{x:Bind ViewModel.Prefs.ShowPercent, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem Text="Size" IsChecked="{x:Bind ViewModel.Prefs.ShowSize, Mode=TwoWay}" />
                         <ToggleMenuFlyoutItem Text="Change" IsChecked="{x:Bind ViewModel.Prefs.ShowChange, Mode=TwoWay}" />
@@ -90,7 +90,7 @@
             <Button x:Name="FilterButton" Content="Filter" />
             <DropDownButton Content="Report">
                 <DropDownButton.Flyout>
-                    <MenuFlyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
                         <MenuFlyoutItem Text="What changed since last scan" Click="Report_Diff" />
                         <MenuFlyoutItem Text="Size history…" Click="Report_History" />
                         <MenuFlyoutSeparator />
@@ -137,6 +137,10 @@
                                 <ComboBoxItem Content="Detailed (251.327 GB)" />
                                 <ComboBoxItem Content="Exact bytes" />
                             </ComboBox>
+                            <StackPanel Orientation="Horizontal" Spacing="14">
+                                <HyperlinkButton Content="Open history folder" Click="OpenHistory_Click" Padding="0" />
+                                <HyperlinkButton Content="Clear history…" Click="ClearHistory_Click" Padding="0" />
+                            </StackPanel>
                             <TextBlock
                                 Text="Layout is set with the Map below / Map right toolbar button and remembered as the default."
                                 TextWrapping="Wrap"

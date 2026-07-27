@@ -45,7 +45,10 @@ public sealed partial class MainPage : Page
         LayoutToggleIcon.Glyph = "";   // dock bottom
 
         // Category filter flyout, one toggle per legend color.
-        var filterMenu = new Microsoft.UI.Xaml.Controls.MenuFlyout();
+        var filterMenu = new Microsoft.UI.Xaml.Controls.MenuFlyout
+        {
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.BottomEdgeAlignedLeft,
+        };
         foreach (var (category, name, _) in FileCategories.All)
         {
             var item = new Microsoft.UI.Xaml.Controls.ToggleMenuFlyoutItem { Text = name, IsChecked = true };
@@ -206,6 +209,56 @@ public sealed partial class MainPage : Page
         ByteFormatter.Detail = (SizeDetail)SizeDetailCombo.SelectedIndex;
         Services.AppSettings.SizeDetail = SizeDetailCombo.SelectedIndex;
         ViewModel.RefreshFormatting();
+    }
+
+    private void OpenHistory_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Prefer the current target's folder; fall back to the history root.
+            string dir = ViewModel.CurrentSnapshot is { } snap
+                ? MainViewModel.GetHistoryDirectory(snap.Target)
+                : MainViewModel.GetHistoryRootDirectory();
+            if (!Directory.Exists(dir))
+                dir = MainViewModel.GetHistoryRootDirectory();
+            Directory.CreateDirectory(dir);
+            System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\"");
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not open history folder: {ex.Message}";
+        }
+    }
+
+    private async void ClearHistory_Click(object sender, RoutedEventArgs e)
+    {
+        string root = MainViewModel.GetHistoryRootDirectory();
+        var files = Directory.Exists(root)
+            ? Directory.GetFiles(root, "*.dvsnap", SearchOption.AllDirectories)
+            : [];
+        if (files.Length == 0)
+        {
+            ViewModel.StatusText = "No size history stored yet.";
+            return;
+        }
+
+        long bytes = files.Sum(f => new FileInfo(f).Length);
+        bool confirmed = await ConfirmAsync("Clear size history?",
+            $"Delete {files.Length} daily snapshot{(files.Length == 1 ? "" : "s")} " +
+            $"({ByteFormatter.Format(bytes)})?\n\nThe last-scan baseline used by the Change column is kept.",
+            "Clear history");
+        if (!confirmed)
+            return;
+
+        try
+        {
+            Directory.Delete(root, recursive: true);
+            ViewModel.StatusText = $"Size history cleared — freed {ByteFormatter.Format(bytes)}.";
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not clear history: {ex.Message}";
+        }
     }
 
     private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)

@@ -59,6 +59,8 @@ public sealed partial class MainPage : Page
         _settingsLoading = true;
         SettingsIcon.Glyph = ""; // gear
         AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
+        ByteFormatter.Detail = (SizeDetail)Math.Clamp(Services.AppSettings.SizeDetail, 0, 2);
+        SizeDetailCombo.SelectedIndex = (int)ByteFormatter.Detail;
         _sideBySide = Services.AppSettings.SideBySideLayout;
         if (_sideBySide)
             ApplyLayout();
@@ -168,8 +170,9 @@ public sealed partial class MainPage : Page
         }
 
         bool confirmed = await ConfirmAsync("Turn off auto-save?",
-            "This also deletes the stored last-scan snapshots, so \"What changed since last scan\" " +
-            "and the Change column won't have a baseline until you scan again with auto-save on.",
+            "This also deletes the stored last-scan snapshots and the daily size history, so " +
+            "\"What changed since last scan\", the Change column, and \"Size history\" will have " +
+            "no data until you scan again with auto-save on.",
             "Turn off & delete");
         if (!confirmed)
         {
@@ -185,12 +188,24 @@ public sealed partial class MainPage : Page
             string dir = MainViewModel.GetAutoSnapshotDirectory();
             if (Directory.Exists(dir))
                 Directory.Delete(dir, recursive: true);
-            ViewModel.StatusText = "Auto-save turned off; stored last-scan snapshots deleted.";
+            string history = MainViewModel.GetHistoryRootDirectory();
+            if (Directory.Exists(history))
+                Directory.Delete(history, recursive: true);
+            ViewModel.StatusText = "Auto-save turned off; stored snapshots and size history deleted.";
         }
         catch (Exception ex)
         {
-            ViewModel.StatusText = $"Auto-save turned off, but snapshots could not be deleted: {ex.Message}";
+            ViewModel.StatusText = $"Auto-save turned off, but stored data could not be deleted: {ex.Message}";
         }
+    }
+
+    private void SizeDetail_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_settingsLoading || SizeDetailCombo.SelectedIndex < 0)
+            return;
+        ByteFormatter.Detail = (SizeDetail)SizeDetailCombo.SelectedIndex;
+        Services.AppSettings.SizeDetail = SizeDetailCombo.SelectedIndex;
+        ViewModel.RefreshFormatting();
     }
 
     private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)
@@ -370,6 +385,39 @@ public sealed partial class MainPage : Page
         string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-diff-{DateTime.Now:yyyyMMdd-HHmmss}.html");
         File.WriteAllText(path, html);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    private async void Report_History(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.CurrentSnapshot is not { } current)
+        {
+            ViewModel.StatusText = "Run a scan first.";
+            return;
+        }
+        try
+        {
+            string dir = MainViewModel.GetHistoryDirectory(current.Target);
+            var files = Directory.Exists(dir)
+                ? Directory.GetFiles(dir, "*.dvsnap").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray()
+                : [];
+            if (files.Length < 2)
+            {
+                ViewModel.StatusText = "History builds one snapshot per day of use — scan again another day to see a chart.";
+                return;
+            }
+            string html = await Task.Run(() =>
+            {
+                var history = files.Select(DriveVisualizer.Core.Snapshots.ScanSnapshot.Load).ToList();
+                return DriveVisualizer.Core.Snapshots.HistoryChart.BuildHtml(history);
+            });
+            string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-history-{DateTime.Now:yyyyMMdd-HHmmss}.html");
+            await File.WriteAllTextAsync(path, html);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not build history: {ex.Message}";
+        }
     }
 
     private async void Report_SaveSnapshot(object sender, RoutedEventArgs e)

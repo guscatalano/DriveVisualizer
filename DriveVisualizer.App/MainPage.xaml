@@ -92,6 +92,7 @@
                 <DropDownButton.Flyout>
                     <MenuFlyout>
                         <MenuFlyoutItem Text="What changed since last scan" Click="Report_Diff" />
+                        <MenuFlyoutItem Text="Size history…" Click="Report_History" />
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="Export HTML report…" Click="Report_Export" />
                         <MenuFlyoutItem Text="Compare with a snapshot file…" Click="Report_Compare" />
@@ -127,6 +128,15 @@
                                 x:Name="AutoSaveToggle"
                                 Header="Auto-save last scan (enables 'What changed since last scan')"
                                 Toggled="AutoSaveToggle_Toggled" />
+                            <ComboBox
+                                x:Name="SizeDetailCombo"
+                                Header="Size detail"
+                                MinWidth="200"
+                                SelectionChanged="SizeDetail_Changed">
+                                <ComboBoxItem Content="Compact (251.3 GB)" />
+                                <ComboBoxItem Content="Detailed (251.327 GB)" />
+                                <ComboBoxItem Content="Exact bytes" />
+                            </ComboBox>
                             <TextBlock
                                 Text="Layout is set with the Map below / Map right toolbar button and remembered as the default."
                                 TextWrapping="Wrap"
@@ -152,8 +162,8 @@
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Name" Style="{ThemeResource CaptionTextBlockStyle}" />
             <TextBlock Grid.Column="1" Width="140" Text="% of parent" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowPercent, Mode=OneWay}" />
-            <TextBlock Grid.Column="2" Width="90" Text="Size" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowSize, Mode=OneWay}" />
-            <TextBlock Grid.Column="3" Width="90" Text="Change" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowChange, Mode=OneWay}"
+            <TextBlock Grid.Column="2" Width="112" Text="Size" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowSize, Mode=OneWay}" />
+            <TextBlock Grid.Column="3" Width="112" Text="Change" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowChange, Mode=OneWay}"
                        ToolTipService.ToolTip="{x:Bind ViewModel.ChangeBaselineText, Mode=OneWay}" />
             <TextBlock Grid.Column="4" Width="80" Text="Files" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowFiles, Mode=OneWay}" />
             <TextBlock Grid.Column="5" Width="140" Text="Modified" TextAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" Visibility="{x:Bind ViewModel.Prefs.ShowModified, Mode=OneWay}" />
@@ -218,9 +228,9 @@
                             <TextBlock Text="{x:Bind PercentText, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2" Width="90" Text="{x:Bind SizeText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="2" Width="112" Text="{x:Bind SizeText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center"
                                    Visibility="{x:Bind Prefs.ShowSize, Mode=OneWay}" />
-                        <TextBlock Grid.Column="3" Width="90" Text="{x:Bind DeltaText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{x:Bind DeltaBrush}"
+                        <TextBlock Grid.Column="3" Width="112" Text="{x:Bind DeltaText}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{x:Bind DeltaBrush}"
                                    Visibility="{x:Bind Prefs.ShowChange, Mode=OneWay}" />
                         <TextBlock Grid.Column="4" Width="80" Text="{x:Bind FilesText, Mode=OneWay}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Visibility="{x:Bind Prefs.ShowFiles, Mode=OneWay}" />

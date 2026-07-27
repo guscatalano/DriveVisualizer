@@ -37,4 +37,15 @@ public static class AppSettings
         set => SetBool(nameof(SideBySideLayout), value);
     }
 
+    /// <summary>Display precision for sizes (DriveVisualizer.Core.SizeDetail as int).</summary>
+    public static int SizeDetail
+    {
+        get => Container?.Values[nameof(SizeDetail)] is int value ? value : 0;
+        set
+        {
+            if (Container is { } c)
+                c.Values[nameof(SizeDetail)] = value;
+        }
+    }
+
 }

@@ -112,12 +112,21 @@ public partial class MainViewModel : ObservableObject
         return Path.Combine(baseDir, "autosnap");
     }
 
-    private static string AutoSnapshotPath(string target)
+    private static string SanitizeTarget(string target)
     {
         var invalid = Path.GetInvalidFileNameChars();
-        string safe = new([.. target.Select(c => invalid.Contains(c) ? '_' : c)]);
-        return Path.Combine(GetAutoSnapshotDirectory(), safe + ".dvsnap");
+        return new string([.. target.Select(c => invalid.Contains(c) ? '_' : c)]);
     }
+
+    private static string AutoSnapshotPath(string target) =>
+        Path.Combine(GetAutoSnapshotDirectory(), SanitizeTarget(target) + ".dvsnap");
+
+    /// <summary>Root of all per-target daily history folders.</summary>
+    public static string GetHistoryRootDirectory() =>
+        Path.Combine(Path.GetDirectoryName(GetAutoSnapshotDirectory())!, "history");
+
+    public static string GetHistoryDirectory(string target) =>
+        Path.Combine(GetHistoryRootDirectory(), SanitizeTarget(target));
 
     private readonly HashSet<FileCategory> _enabledCategories =
         [.. Rendering.FileCategories.All.Select(c => c.Category)];
@@ -255,6 +264,14 @@ public partial class MainViewModel : ObservableObject
                         {
                             Directory.CreateDirectory(Path.GetDirectoryName(autoPath)!);
                             snap.Save(autoPath);
+                        }
+                        catch { }
+                        // One history entry per day (today's latest scan wins), for the size-history chart.
+                        try
+                        {
+                            string historyDir = GetHistoryDirectory(target);
+                            Directory.CreateDirectory(historyDir);
+                            snap.Save(Path.Combine(historyDir, $"{DateTime.Now:yyyy-MM-dd}.dvsnap"));
                         }
                         catch { }
                     }
@@ -734,6 +751,18 @@ public partial class MainViewModel : ObservableObject
             n.SubtreeFileCount += 1;
         }
         AfterTreeMutation();
+    }
+
+    /// <summary>Re-renders every size string after the size-detail setting changes.</summary>
+    public void RefreshFormatting()
+    {
+        if (_root is null)
+            return;
+        RebuildAllRows();
+        if (_categoryTotals is { } totals)
+            Categories = BuildCategoryStats(totals, _root.AllocatedSize);
+        if (SelectedRow is { } row)
+            SelectionText = $"{row.Node.GetFullPath()}  —  {row.SizeText}";
     }
 
     private async void AfterTreeMutation()

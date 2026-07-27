@@ -118,6 +118,13 @@ public static class AppSettings
         set => SetBool(nameof(SideBySideLayout), value);
     }
 
+    /// <summary>App theme: 0 system, 1 light, 2 dark.</summary>
+    public static int Theme
+    {
+        get => GetInt(nameof(Theme), 0);
+        set => SetInt(nameof(Theme), value);
+    }
+
     /// <summary>Visualization style: 0 treemap, 1 sunburst, 2 icicle.</summary>
     public static int VizMode
     {

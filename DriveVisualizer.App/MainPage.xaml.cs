@@ -66,6 +66,7 @@ public sealed partial class MainPage : Page
     {
         ViewModel = new MainViewModel(DispatcherQueue);
         InitializeComponent();
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
 
         ZoomInIcon.Glyph = "";
         ZoomOutSmallIcon.Glyph = "";
@@ -89,9 +90,7 @@ public sealed partial class MainPage : Page
         // Restore persisted settings without letting the change handlers re-save them.
         _settingsLoading = true;
         SettingsIcon.Glyph = ""; // gear
-        AutoSaveToggle.IsOn = Services.AppSettings.AutoSaveSnapshots;
         ByteFormatter.Detail = (SizeDetail)Math.Clamp(Services.AppSettings.SizeDetail, 0, 2);
-        SizeDetailCombo.SelectedIndex = (int)ByteFormatter.Detail;
         _vizMode = (VizMode)Math.Clamp(Services.AppSettings.VizMode, 0, 2);
         UpdateViewButton();
         _sideBySide = Services.AppSettings.SideBySideLayout;
@@ -215,105 +214,8 @@ public sealed partial class MainPage : Page
         RecomputeTreemap();
     }
 
-    private async void AutoSaveToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_settingsLoading)
-            return;
-
-        if (AutoSaveToggle.IsOn)
-        {
-            Services.AppSettings.AutoSaveSnapshots = true;
-            return;
-        }
-
-        bool confirmed = await ConfirmAsync("Turn off auto-save?",
-            "This also deletes the stored daily snapshots (one folder holds both the last-scan " +
-            "baseline and the size history), so \"What changed since last scan\", the Change column, " +
-            "and \"Size history\" will have no data until you scan again with auto-save on.",
-            "Turn off & delete");
-        if (!confirmed)
-        {
-            _settingsLoading = true;
-            AutoSaveToggle.IsOn = true;
-            _settingsLoading = false;
-            return;
-        }
-
-        Services.AppSettings.AutoSaveSnapshots = false;
-        try
-        {
-            string history = MainViewModel.GetHistoryRootDirectory();
-            if (Directory.Exists(history))
-                Directory.Delete(history, recursive: true);
-            string legacy = MainViewModel.GetLegacyAutoSnapshotDirectory();
-            if (Directory.Exists(legacy))
-                Directory.Delete(legacy, recursive: true);
-            ViewModel.StatusText = "Auto-save turned off; stored snapshots deleted.";
-        }
-        catch (Exception ex)
-        {
-            ViewModel.StatusText = $"Auto-save turned off, but stored data could not be deleted: {ex.Message}";
-        }
-    }
-
-    private void SizeDetail_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (_settingsLoading || SizeDetailCombo.SelectedIndex < 0)
-            return;
-        ByteFormatter.Detail = (SizeDetail)SizeDetailCombo.SelectedIndex;
-        Services.AppSettings.SizeDetail = SizeDetailCombo.SelectedIndex;
-        ViewModel.RefreshFormatting();
-    }
-
-    private void OpenHistory_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            // Prefer the current target's folder; fall back to the history root.
-            string dir = ViewModel.CurrentSnapshot is { } snap
-                ? MainViewModel.GetHistoryDirectory(snap.Target)
-                : MainViewModel.GetHistoryRootDirectory();
-            if (!Directory.Exists(dir))
-                dir = MainViewModel.GetHistoryRootDirectory();
-            Directory.CreateDirectory(dir);
-            System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\"");
-        }
-        catch (Exception ex)
-        {
-            ViewModel.StatusText = $"Could not open history folder: {ex.Message}";
-        }
-    }
-
-    private async void ClearHistory_Click(object sender, RoutedEventArgs e)
-    {
-        string root = MainViewModel.GetHistoryRootDirectory();
-        var files = Directory.Exists(root)
-            ? Directory.GetFiles(root, "*.dvsnap", SearchOption.AllDirectories)
-            : [];
-        if (files.Length == 0)
-        {
-            ViewModel.StatusText = "No size history stored yet.";
-            return;
-        }
-
-        long bytes = files.Sum(f => new FileInfo(f).Length);
-        bool confirmed = await ConfirmAsync("Clear size history?",
-            $"Delete {files.Length} daily snapshot{(files.Length == 1 ? "" : "s")} " +
-            $"({ByteFormatter.Format(bytes)})?\n\nThe last-scan baseline used by the Change column is kept.",
-            "Clear history");
-        if (!confirmed)
-            return;
-
-        try
-        {
-            Directory.Delete(root, recursive: true);
-            ViewModel.StatusText = $"Size history cleared — freed {ByteFormatter.Format(bytes)}.";
-        }
-        catch (Exception ex)
-        {
-            ViewModel.StatusText = $"Could not clear history: {ex.Message}";
-        }
-    }
+    private void Settings_Click(object sender, RoutedEventArgs e) =>
+        Frame.Navigate(typeof(SettingsPage), ViewModel);
 
     private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)
     {
@@ -321,53 +223,7 @@ public sealed partial class MainPage : Page
         TreemapCanvas.Invalidate();
     }
 
-    private async void About_Click(object sender, RoutedEventArgs e)
-    {
-        string version;
-        try
-        {
-            var v = Windows.ApplicationModel.Package.Current.Id.Version;
-            version = $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
-        }
-        catch
-        {
-            version = "dev";
-        }
 
-        var links = new StackPanel { Spacing = 4 };
-        links.Children.Add(new TextBlock
-        {
-            Text = $"DriveVisualizer {version}\nSee what's eating your disk: scan, map, clean up.",
-            TextWrapping = TextWrapping.Wrap,
-        });
-        links.Children.Add(new HyperlinkButton
-        {
-            Content = "github.com/guscatalano/DriveVisualizer",
-            NavigateUri = new Uri("https://github.com/guscatalano/DriveVisualizer"),
-            Padding = new Thickness(0),
-        });
-        links.Children.Add(new HyperlinkButton
-        {
-            Content = "guscatalano.com",
-            NavigateUri = new Uri("https://guscatalano.com"),
-            Padding = new Thickness(0),
-        });
-        links.Children.Add(new TextBlock
-        {
-            Text = "Built with WinUI 3, Win2D, and the Windows App SDK.",
-            Opacity = 0.7,
-            Margin = new Thickness(0, 8, 0, 0),
-        });
-
-        var dialog = new ContentDialog
-        {
-            Title = "About DriveVisualizer",
-            Content = links,
-            CloseButtonText = "Close",
-            XamlRoot = XamlRoot,
-        };
-        await dialog.ShowAsync();
-    }
 
     private void ApplyLayout()
     {

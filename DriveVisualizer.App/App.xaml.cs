@@ -70,6 +70,7 @@ public partial class App : Application
     {
         _window = new MainWindow();
         Window = _window;
+        SettingsPage.ApplyTheme(Services.AppSettings.Theme);
         _window.Activate();
     }
 }

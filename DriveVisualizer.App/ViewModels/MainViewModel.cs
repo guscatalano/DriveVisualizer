@@ -9,6 +9,9 @@ namespace DriveVisualizer_App.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
+    /// <summary>Above this many rows, expanding inserts item-by-item is slower than a full reset.</summary>
+    private const int IncrementalInsertLimit = 500;
+
     private readonly DispatcherQueueTimer _progressTimer;
     private ParallelScanner? _scanner;
     private CancellationTokenSource? _cts;
@@ -16,7 +19,7 @@ public partial class MainViewModel : ObservableObject
     private readonly HashSet<FsNode> _expanded = [];
 
     [ObservableProperty]
-    public partial IReadOnlyList<NodeRow> Rows { get; set; }
+    public partial ObservableCollection<NodeRow> Rows { get; set; }
 
     [ObservableProperty]
     public partial string StatusText { get; set; }
@@ -34,6 +37,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     public partial NodeRow? SelectedRow { get; set; }
 
+    /// <summary>Completed scan root; the treemap pane listens for this.</summary>
+    [ObservableProperty]
+    public partial FsNode? ScanRoot { get; set; }
+
     public ObservableCollection<string> Targets { get; } = [];
 
     public string ScanButtonText => IsScanning ? "Stop" : "Scan";
@@ -46,8 +53,8 @@ public partial class MainViewModel : ObservableObject
         SelectionText = "";
 
         _progressTimer = dispatcher.CreateTimer();
-        _progressTimer.Interval = TimeSpan.FromMilliseconds(250);
-        _progressTimer.Tick += (_, _) => ReportProgress();
+        _progressTimer.Interval = TimeSpan.FromMilliseconds(300);
+        _progressTimer.Tick += (_, _) => ProgressTick();
 
         foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady))
             Targets.Add(drive.Name);
@@ -70,8 +77,11 @@ public partial class MainViewModel : ObservableObject
             return;
 
         IsScanning = true;
+        _root = null;
+        ScanRoot = null;
         Rows = [];
         SelectedRow = null;
+        _expanded.Clear();
         _scanner = new ParallelScanner();
         _cts = new CancellationTokenSource();
         _progressTimer.Start();
@@ -82,9 +92,9 @@ public partial class MainViewModel : ObservableObject
             await Task.Run(() => SortChildrenBySize(result.Root));
 
             _root = result.Root;
-            _expanded.Clear();
             _expanded.Add(_root);
-            RebuildRows();
+            RebuildAllRows();
+            ScanRoot = _root;
 
             var stats = _scanner.Statistics;
             string denied = stats.AccessDenied > 0 ? $" — {stats.AccessDenied:N0} folders not readable" : "";
@@ -105,55 +115,127 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private void ReportProgress()
+    private void ProgressTick()
     {
-        if (_scanner is { } s)
-            StatusText = $"Scanning…  {s.Statistics.Files:N0} files, {s.Statistics.Directories:N0} folders, " +
-                         $"{ByteFormatter.Format(s.Statistics.LogicalBytes)}";
+        if (_scanner is not { } scanner)
+            return;
+
+        var s = scanner.Statistics;
+        StatusText = $"Scanning…  {s.Files:N0} files, {s.Directories:N0} folders, " +
+                     $"{ByteFormatter.Format(s.LogicalBytes)}";
+
+        // Adopt the live tree on the first tick so the list builds while scanning.
+        if (_root is null && scanner.LiveRoot is { } live)
+        {
+            _root = live;
+            _expanded.Add(live);
+        }
+        if (_root is not null && IsScanning)
+            SyncLiveRows();
+    }
+
+    /// <summary>
+    /// Reconciles the visible rows against the growing tree: existing rows are
+    /// refreshed in place, newly discovered nodes are inserted. Append-only per
+    /// level while scanning, so a positional merge is sufficient.
+    /// </summary>
+    private void SyncLiveRows()
+    {
+        int i = 0;
+        foreach (var (node, depth) in WalkVisible())
+        {
+            if (i < Rows.Count && ReferenceEquals(Rows[i].Node, node))
+                Rows[i].Refresh();
+            else
+                Rows.Insert(i, new NodeRow(node, depth, _expanded.Contains(node)));
+            i++;
+        }
+        while (Rows.Count > i)
+            Rows.RemoveAt(Rows.Count - 1);
+    }
+
+    private void RebuildAllRows()
+    {
+        var rows = new ObservableCollection<NodeRow>();
+        foreach (var (node, depth) in WalkVisible())
+            rows.Add(new NodeRow(node, depth, _expanded.Contains(node)));
+        Rows = rows;
+    }
+
+    private IEnumerable<(FsNode Node, int Depth)> WalkVisible()
+    {
+        if (_root is null)
+            yield break;
+
+        var stack = new Stack<(FsNode, int)>();
+        stack.Push((_root, 0));
+        while (stack.Count > 0)
+        {
+            var (node, depth) = stack.Pop();
+            yield return (node, depth);
+
+            if (_expanded.Contains(node) && node.Children is { } children)
+                for (int c = children.Length - 1; c >= 0; c--)
+                    stack.Push((children[c], depth + 1));
+        }
     }
 
     public void ToggleExpand(NodeRow row)
     {
         if (!row.HasChildren)
             return;
-        if (!_expanded.Remove(row.Node))
+
+        int index = Rows.IndexOf(row);
+        if (index < 0)
+            return;
+
+        if (_expanded.Remove(row.Node))
+        {
+            row.IsExpanded = false;
+            while (index + 1 < Rows.Count && Rows[index + 1].Depth > row.Depth)
+                Rows.RemoveAt(index + 1);
+        }
+        else
+        {
             _expanded.Add(row.Node);
-        RebuildRows();
-        SelectedRow = Rows.FirstOrDefault(r => r.Node == row.Node);
+            row.IsExpanded = true;
+
+            var subtree = new List<NodeRow>();
+            CollectVisibleSubtree(row.Node, row.Depth, subtree);
+            if (subtree.Count > IncrementalInsertLimit)
+            {
+                RebuildAllRows();
+                SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Node, row.Node));
+                return;
+            }
+            for (int k = 0; k < subtree.Count; k++)
+                Rows.Insert(index + 1 + k, subtree[k]);
+        }
+        SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Node, row.Node));
     }
 
-    private void RebuildRows()
+    private void CollectVisibleSubtree(FsNode node, int depth, List<NodeRow> output)
     {
-        if (_root is null)
-        {
-            Rows = [];
+        if (node.Children is not { } children)
             return;
-        }
-
-        var list = new List<NodeRow>(256);
-        var stack = new Stack<(FsNode Node, int Depth)>();
-        stack.Push((_root, 0));
-
-        while (stack.Count > 0)
+        foreach (var child in children)
         {
-            var (node, depth) = stack.Pop();
-            bool expanded = _expanded.Contains(node);
-            long parentSize = node.Parent?.AllocatedSize ?? node.AllocatedSize;
-
-            list.Add(new NodeRow
-            {
-                Node = node,
-                Depth = depth,
-                IsExpanded = expanded,
-                PercentOfParent = parentSize > 0 ? 100.0 * node.AllocatedSize / parentSize : 0,
-            });
-
-            if (expanded && node.Children is { } children)
-                for (int i = children.Length - 1; i >= 0; i--)
-                    stack.Push((children[i], depth + 1));
+            output.Add(new NodeRow(child, depth + 1, _expanded.Contains(child)));
+            if (_expanded.Contains(child))
+                CollectVisibleSubtree(child, depth + 1, output);
         }
+    }
 
-        Rows = list;
+    /// <summary>Selects a node picked in the treemap, expanding ancestors so it is visible.</summary>
+    public void SelectNode(FsNode node)
+    {
+        bool structureChanged = false;
+        for (var ancestor = node.Parent; ancestor is not null; ancestor = ancestor.Parent)
+            structureChanged |= _expanded.Add(ancestor);
+
+        if (structureChanged)
+            RebuildAllRows();
+        SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Node, node));
     }
 
     /// <summary>Sorts every directory's children by allocated size, biggest first (one-time, post-scan).</summary>

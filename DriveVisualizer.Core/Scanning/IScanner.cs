@@ -12,6 +12,12 @@ public interface IScanner
     ScanStatistics Statistics { get; }
 
     /// <summary>
+    /// Root of the in-progress tree, available as soon as a scan starts.
+    /// Directory sizes grow live; safe to read (but not mutate) from the UI thread.
+    /// </summary>
+    FsNode? LiveRoot { get; }
+
+    /// <summary>
     /// Scans <paramref name="rootPath"/> and returns the aggregated tree.
     /// Cancellation returns the partial tree (aggregated) rather than throwing.
     /// </summary>

@@ -14,8 +14,12 @@ namespace DriveVisualizer.Core.Scanning;
 public sealed class ParallelScanner : IScanner
 {
     private ScanStatistics _statistics = new();
+    private FsNode? _liveRoot;
 
     public ScanStatistics Statistics => _statistics;
+
+    /// <summary>Partial tree while a scan is running; sizes grow as workers propagate sums upward.</summary>
+    public FsNode? LiveRoot => _liveRoot;
 
     public int DegreeOfParallelism { get; init; } = Math.Max(2, Environment.ProcessorCount);
 
@@ -35,6 +39,7 @@ public sealed class ParallelScanner : IScanner
             Name = rootPath,
             Attributes = (uint)File.GetAttributes(rootPath),
         };
+        _liveRoot = root;
 
         var channel = Channel.CreateUnbounded<FsNode>(new UnboundedChannelOptions
         {
@@ -67,7 +72,6 @@ public sealed class ParallelScanner : IScanner
         }
 
         await Task.WhenAll(workers).ConfigureAwait(false);
-        Aggregate(root);
         stopwatch.Stop();
 
         return new ScanResult(root, stopwatch.Elapsed, cancellationToken.IsCancellationRequested);
@@ -97,6 +101,8 @@ public sealed class ParallelScanner : IScanner
             }
 
             var children = new List<FsNode>();
+            long fileLogical = 0, fileAllocated = 0;
+            int fileCount = 0;
             do
             {
                 string name = findData.cFileName;
@@ -137,11 +143,27 @@ public sealed class ParallelScanner : IScanner
                     node.AllocatedSize = ComputeAllocatedSize(
                         findData, extendedDirPath, name, clusterSize);
                     stats.AddFile(node.LogicalSize, node.AllocatedSize);
+                    fileLogical += node.LogicalSize;
+                    fileAllocated += node.AllocatedSize;
+                    fileCount++;
                 }
             }
             while (NativeMethods.FindNextFileW(handle, out findData));
 
             dir.Children = children.Count > 0 ? children.ToArray() : [];
+
+            // Propagate this directory's direct-file totals up the ancestor chain
+            // (one O(depth) walk per directory, not per file). Directory sizes are
+            // therefore live during the scan and exact when it completes.
+            if (fileCount > 0)
+            {
+                for (FsNode? n = dir; n is not null; n = n.Parent)
+                {
+                    Interlocked.Add(ref n.LogicalSize, fileLogical);
+                    Interlocked.Add(ref n.AllocatedSize, fileAllocated);
+                    Interlocked.Add(ref n.SubtreeFileCount, fileCount);
+                }
+            }
         }
     }
 
@@ -175,33 +197,6 @@ public sealed class ParallelScanner : IScanner
         }
 
         return (logical + clusterSize - 1) / clusterSize * clusterSize;
-    }
-
-    /// <summary>Bottom-up size/count aggregation into directory nodes.</summary>
-    private static void Aggregate(FsNode root)
-    {
-        // Pre-order flatten, then reverse-iterate: every child is processed
-        // before its parent, without recursion (paths can nest very deep).
-        var order = new List<FsNode>(1024);
-        var stack = new Stack<FsNode>();
-        stack.Push(root);
-        while (stack.Count > 0)
-        {
-            var node = stack.Pop();
-            order.Add(node);
-            if (node.Children is { } kids)
-                foreach (var child in kids)
-                    stack.Push(child);
-        }
-
-        for (int i = order.Count - 1; i > 0; i--)
-        {
-            var node = order[i];
-            var parent = node.Parent!;
-            parent.LogicalSize += node.LogicalSize;
-            parent.AllocatedSize += node.AllocatedSize;
-            parent.SubtreeFileCount += node.IsDirectory ? node.SubtreeFileCount : 1;
-        }
     }
 
     private static long GetClusterSize(string path)

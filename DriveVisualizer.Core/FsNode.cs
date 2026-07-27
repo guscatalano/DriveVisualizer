@@ -24,18 +24,22 @@ public sealed class FsNode
     /// <summary>Null for files and for directories that could not be scanned.</summary>
     public FsNode[]? Children { get; set; }
 
-    /// <summary>File length; for directories, aggregated subtree total after the scan completes.</summary>
-    public long LogicalSize { get; set; }
+    // Plain fields (not properties) so scanner workers can Interlocked.Add into
+    // them while propagating file sums up the ancestor chain during the scan.
+    // Directory values therefore grow live and are complete when the scan ends.
+
+    /// <summary>File length; for directories, aggregated subtree total.</summary>
+    public long LogicalSize;
 
     /// <summary>Size on disk (cluster-rounded, compression/placeholder-aware); aggregated for directories.</summary>
-    public long AllocatedSize { get; set; }
+    public long AllocatedSize;
+
+    /// <summary>Number of files in this subtree (0 for file nodes themselves).</summary>
+    public int SubtreeFileCount;
 
     public long LastWriteTimeTicks { get; set; }
     public uint Attributes { get; set; }
     public NodeFlags Flags { get; set; }
-
-    /// <summary>Number of files in this subtree (0 for file nodes themselves).</summary>
-    public int SubtreeFileCount { get; set; }
 
     public bool IsDirectory => (Attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     public bool IsReparsePoint => (Attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;

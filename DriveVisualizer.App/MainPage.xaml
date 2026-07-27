@@ -6,13 +6,15 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:DriveVisualizer_App.ViewModels"
+    xmlns:win2d="using:Microsoft.Graphics.Canvas.UI.Xaml"
     mc:Ignorable="d">
 
     <Grid Padding="12,4,12,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="2*" MinHeight="150" />
+            <RowDefinition Height="1.4*" MinHeight="160" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -83,30 +85,61 @@
                             <Button
                                 Width="24" Height="24" Padding="0"
                                 Background="Transparent" BorderThickness="0"
-                                IsHitTestVisible="{x:Bind HasChildren}"
+                                IsHitTestVisible="{x:Bind HasChildren, Mode=OneWay}"
                                 Click="Chevron_Click">
-                                <FontIcon Glyph="{x:Bind ChevronGlyph}" FontSize="10" />
+                                <FontIcon Glyph="{x:Bind ChevronGlyph, Mode=OneWay}" FontSize="10" />
                             </Button>
                             <FontIcon Glyph="{x:Bind IconGlyph}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                            <FontIcon Glyph="{x:Bind Badge}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                            <FontIcon Glyph="{x:Bind Badge, Mode=OneWay}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <ProgressBar Width="70" Maximum="100" Value="{x:Bind PercentOfParent}" />
-                            <TextBlock Text="{x:Bind PercentText}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                            <ProgressBar Width="70" Maximum="100" Value="{x:Bind PercentOfParent, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind PercentText, Mode=OneWay}" Style="{ThemeResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="3" Text="{x:Bind FilesText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText, Mode=OneWay}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="{x:Bind FilesText, Mode=OneWay}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock Grid.Column="4" Text="{x:Bind ModifiedText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
 
+        <!-- Treemap -->
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <win2d:CanvasControl
+                x:Name="TreemapCanvas"
+                Draw="TreemapCanvas_Draw"
+                PointerMoved="TreemapCanvas_PointerMoved"
+                PointerExited="TreemapCanvas_PointerExited"
+                PointerPressed="TreemapCanvas_PointerPressed"
+                DoubleTapped="TreemapCanvas_DoubleTapped"
+                SizeChanged="TreemapCanvas_SizeChanged" />
+            <Button
+                x:Name="ZoomOutButton"
+                Content="Zoom out"
+                Visibility="Collapsed"
+                Click="ZoomOut_Click"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,6,6,0" />
+            <Border
+                x:Name="HoverTip"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="8,4">
+                <TextBlock x:Name="HoverTipText" Style="{ThemeResource CaptionTextBlockStyle}" />
+            </Border>
+        </Grid>
+
         <!-- Status bar -->
-        <Grid Grid.Row="3" Padding="4,6,4,8">
+        <Grid Grid.Row="4" Padding="4,6,4,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

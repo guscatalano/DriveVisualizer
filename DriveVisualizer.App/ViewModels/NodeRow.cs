@@ -1,14 +1,16 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using DriveVisualizer.Core;
 using Microsoft.UI.Xaml;
 
 namespace DriveVisualizer_App.ViewModels;
 
 /// <summary>
-/// One visible row in the flattened directory tree. Rows are rebuilt on every
-/// expand/collapse (cost is proportional to visible rows only), so they carry
-/// no change notification — all values are computed once at build time.
+/// One visible row in the flattened directory tree. Value properties read the
+/// underlying node directly, so during a scan the view model calls
+/// <see cref="Refresh"/> each progress tick and rows update in place —
+/// no collection churn, scroll position preserved.
 /// </summary>
-public sealed class NodeRow
+public sealed partial class NodeRow : ObservableObject
 {
     // Segoe Fluent icon code points.
     private const string ChevronDown = "";
@@ -18,12 +20,27 @@ public sealed class NodeRow
     private const string LockIcon = "";
     private const string LinkIcon = "";
 
-    public required FsNode Node { get; init; }
-    public required int Depth { get; init; }
-    public required bool IsExpanded { get; init; }
+    public FsNode Node { get; }
+    public int Depth { get; }
 
-    /// <summary>Share of the parent's allocated size, 0–100.</summary>
-    public required double PercentOfParent { get; init; }
+    private bool _isExpanded;
+
+    public NodeRow(FsNode node, int depth, bool isExpanded)
+    {
+        Node = node;
+        Depth = depth;
+        _isExpanded = isExpanded;
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (SetProperty(ref _isExpanded, value))
+                OnPropertyChanged(nameof(ChevronGlyph));
+        }
+    }
 
     public bool HasChildren => Node.Children is { Length: > 0 };
 
@@ -31,8 +48,18 @@ public sealed class NodeRow
     public string ChevronGlyph => !HasChildren ? "" : IsExpanded ? ChevronDown : ChevronRight;
     public string IconGlyph => Node.IsDirectory ? FolderIcon : FileIcon;
 
-    public string SizeText => ByteFormatter.Format(Node.AllocatedSize);
+    /// <summary>Share of the parent's allocated size, 0–100.</summary>
+    public double PercentOfParent
+    {
+        get
+        {
+            long parentSize = Node.Parent?.AllocatedSize ?? Node.AllocatedSize;
+            return parentSize > 0 ? 100.0 * Node.AllocatedSize / parentSize : 0;
+        }
+    }
+
     public string PercentText => $"{PercentOfParent:F1}%";
+    public string SizeText => ByteFormatter.Format(Node.AllocatedSize);
     public string FilesText => Node.IsDirectory ? Node.SubtreeFileCount.ToString("N0") : "";
 
     public string ModifiedText => Node.LastWriteTimeTicks > 0
@@ -45,4 +72,16 @@ public sealed class NodeRow
         "";
 
     public Thickness Indent => new(Depth * 20, 0, 0, 0);
+
+    /// <summary>Re-raises change notifications for everything that moves during a scan.</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(PercentOfParent));
+        OnPropertyChanged(nameof(PercentText));
+        OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(FilesText));
+        OnPropertyChanged(nameof(ChevronGlyph));
+        OnPropertyChanged(nameof(HasChildren));
+        OnPropertyChanged(nameof(Badge));
+    }
 }

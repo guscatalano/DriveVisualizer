@@ -402,7 +402,25 @@ public sealed partial class MainPage : Page
                 : [];
             if (files.Length < 2)
             {
-                ViewModel.StatusText = "History builds one snapshot per day of use — scan again another day to see a chart.";
+                string autoSaveNote = Services.AppSettings.AutoSaveSnapshots
+                    ? ""
+                    : "\n\n⚠ Auto-save is currently OFF in Settings, so no history is being recorded at all.";
+                var dialog = new ContentDialog
+                {
+                    Title = "Size history — how it works",
+                    Content =
+                        "Every day you run a scan, DriveVisualizer keeps one snapshot of that day's totals " +
+                        "(overall size plus each category: apps, temp files, disk images, …).\n\n" +
+                        "Once you've scanned on two or more different days, this menu turns those daily snapshots " +
+                        "into a chart — one stacked bar per day — so you can see whether the drive is filling up " +
+                        "over time and which kind of files are doing it.\n\n" +
+                        $"Recorded so far: {files.Length} day{(files.Length == 1 ? "" : "s")} for {current.Target}. " +
+                        "Scan again on another day and the chart will appear here." + autoSaveNote,
+                    CloseButtonText = "Got it",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = XamlRoot,
+                };
+                await dialog.ShowAsync();
                 return;
             }
             string html = await Task.Run(() =>

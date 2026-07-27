@@ -70,7 +70,7 @@ public sealed class ScanSnapshot
         return paths; // parents always precede children (pre-order build)
     }
 
-    public static ScanSnapshot Build(FsNode root, string target, DateTime timestampUtc, int topFileCount = 100)
+    public static ScanSnapshot Build(FsNode root, string target, DateTime timestampUtc, int topFileCount = 2000)
     {
         var snapshot = new ScanSnapshot
         {

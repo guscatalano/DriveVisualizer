@@ -64,6 +64,25 @@ public sealed class HistoryChartTests
     }
 
     [Fact]
+    public void FileMoversTrackGrowthNewAndRemovedFiles()
+    {
+        var before = Snap(new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc), 1000, 0);
+        before.TopFiles.Add(new SnapshotFile { Path = @"C:\x\grow.bin", AllocatedSize = 100 });
+        before.TopFiles.Add(new SnapshotFile { Path = @"C:\x\gone.bin", AllocatedSize = 500 });
+
+        var after = Snap(new DateTime(2026, 7, 26, 12, 0, 0, DateTimeKind.Utc), 1000, 0);
+        after.TopFiles.Add(new SnapshotFile { Path = @"C:\x\grow.bin", AllocatedSize = 900 });
+        after.TopFiles.Add(new SnapshotFile { Path = @"C:\x\new.bin", AllocatedSize = 300 });
+
+        var movers = HistoryChart.ComputeFileMovers(before, after, 10);
+
+        Assert.Contains(movers, m => m.Path == @"C:\x\grow.bin" && m.Delta == 800);
+        Assert.Contains(movers, m => m.Path.StartsWith(@"C:\x\gone.bin") && m.Delta == -500);
+        Assert.Contains(movers, m => m.Path == @"C:\x\new.bin" && m.Delta == 300);
+        Assert.Equal(800, movers[0].Delta); // ordered by magnitude
+    }
+
+    [Fact]
     public void SnapshotsAreOrderedByTimeRegardlessOfInputOrder()
     {
         var history = new List<ScanSnapshot>

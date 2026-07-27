@@ -99,16 +99,16 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Snapshot frequency" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock Text="Automatic snapshots" Style="{StaticResource CardTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}"
-                                       Text="How often a completed scan creates a new history entry (scans within the same period update it)." />
+                                       Text="While the app is open, re-scan the current target and snapshot it at this cadence. 'Off' records snapshots only when you scan manually." />
                         </StackPanel>
                         <ComboBox x:Name="FrequencyCombo" Grid.Column="1" MinWidth="190" VerticalAlignment="Center"
                                   SelectionChanged="Frequency_Changed">
-                            <ComboBoxItem Content="Every scan" />
-                            <ComboBoxItem Content="At most hourly" />
-                            <ComboBoxItem Content="At most daily" />
-                            <ComboBoxItem Content="At most weekly" />
+                            <ComboBoxItem Content="Off — manual scans only" />
+                            <ComboBoxItem Content="Hourly" />
+                            <ComboBoxItem Content="Daily" />
+                            <ComboBoxItem Content="Weekly" />
                         </ComboBox>
                     </Grid>
                     <Grid ColumnSpacing="16">
@@ -167,8 +167,8 @@
                     <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,6,0,0">
                         <HyperlinkButton Content="github.com/guscatalano/DriveVisualizer"
                                          NavigateUri="https://github.com/guscatalano/DriveVisualizer" Padding="0" />
-                        <HyperlinkButton Content="guscatalano.com"
-                                         NavigateUri="https://guscatalano.com" Padding="0" />
+                        <HyperlinkButton Content="guscatalano.dev"
+                                         NavigateUri="https://guscatalano.dev" Padding="0" />
                     </StackPanel>
                     <TextBlock Style="{StaticResource CardDescStyle}"
                                Text="Built with WinUI 3, Win2D, and the Windows App SDK. MIT licensed." />

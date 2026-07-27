@@ -231,17 +231,46 @@ public static class HistoryChart
                 .OrderByDescending(x => Math.Abs(x.Delta))
                 .Take(6)
                 .ToList();
-            if (movers.Count == 0)
+            var fileMovers = ComputeFileMovers(before, after, 6);
+
+            if (movers.Count == 0 && fileMovers.Count == 0)
             {
-                sb.Append("<div class=\"muted\" style=\"font-size:12px\">No folder-level changes.</div>");
+                sb.Append("<div class=\"muted\" style=\"font-size:12px\">No changes recorded.</div>");
                 continue;
             }
             sb.Append("<table><tbody>");
             foreach (var (path, deltaBytes) in movers)
-                sb.Append($"<tr><td style=\"text-align:left;word-break:break-all\">{WebUtility.HtmlEncode(path)}</td>" +
+                sb.Append($"<tr><td style=\"text-align:left;word-break:break-all\">📁 {WebUtility.HtmlEncode(path)}</td>" +
+                          $"<td style=\"white-space:nowrap\" class=\"{(deltaBytes > 0 ? "pos" : "neg")}\">{(deltaBytes > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(deltaBytes))}</td></tr>");
+            foreach (var (path, deltaBytes) in fileMovers)
+                sb.Append($"<tr><td style=\"text-align:left;word-break:break-all\">📄 {WebUtility.HtmlEncode(path)}</td>" +
                           $"<td style=\"white-space:nowrap\" class=\"{(deltaBytes > 0 ? "pos" : "neg")}\">{(deltaBytes > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(deltaBytes))}</td></tr>");
             sb.Append("</tbody></table>");
         }
+        sb.Append("<div class=\"muted\" style=\"font-size:12px;margin-top:6px\">📄 File changes are tracked among each snapshot's largest files; a file listed as removed may also have shrunk out of that set.</div>");
+    }
+
+    /// <summary>Biggest individual file changes between two snapshots' top-file lists.</summary>
+    public static List<(string Path, long Delta)> ComputeFileMovers(ScanSnapshot before, ScanSnapshot after, int take)
+    {
+        var beforeFiles = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in before.TopFiles)
+            beforeFiles[f.Path] = f.AllocatedSize;
+
+        var deltas = new List<(string Path, long Delta)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in after.TopFiles)
+        {
+            seen.Add(f.Path);
+            long delta = f.AllocatedSize - (beforeFiles.TryGetValue(f.Path, out long b) ? b : 0);
+            if (delta != 0)
+                deltas.Add((f.Path, delta));
+        }
+        foreach (var f in before.TopFiles)
+            if (!seen.Contains(f.Path))
+                deltas.Add((f.Path + "  (removed)", -f.AllocatedSize));
+
+        return deltas.OrderByDescending(x => Math.Abs(x.Delta)).Take(take).ToList();
     }
 
     private static string F(float v) => v.ToString("F1", CultureInfo.InvariantCulture);

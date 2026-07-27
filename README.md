@@ -74,4 +74,4 @@ Design notes live in [PLAN.md](PLAN.md).
 ## Links
 
 - [github.com/guscatalano/DriveVisualizer](https://github.com/guscatalano/DriveVisualizer)
-- [guscatalano.com](https://guscatalano.com)
+- [guscatalano.dev](https://guscatalano.dev)

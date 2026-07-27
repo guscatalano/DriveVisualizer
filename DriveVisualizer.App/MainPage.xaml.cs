@@ -68,6 +68,7 @@ public sealed partial class MainPage : Page
         InitializeComponent();
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
 
+        DriveInfoIcon.Glyph = "";
         ZoomInIcon.Glyph = "";
         ZoomOutSmallIcon.Glyph = "";
         ZoomOutIcon.Glyph = "";        // back arrow
@@ -216,6 +217,44 @@ public sealed partial class MainPage : Page
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>
         Frame.Navigate(typeof(SettingsPage), ViewModel);
+
+    private async void DriveInfo_Click(object sender, RoutedEventArgs e)
+    {
+        string? target = ViewModel.SelectedTarget;
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            DriveInfoText.Text = "Pick a drive or folder first.";
+            return;
+        }
+        DriveInfoText.Text = "Reading drive details…";
+        var d = await Task.Run(() => Services.DriveStats.Get(target));
+        if (d is null)
+        {
+            DriveInfoText.Text = "No local drive details available for this target.";
+            return;
+        }
+
+        long used = d.TotalBytes - d.FreeBytes;
+        double usedPct = d.TotalBytes > 0 ? 100.0 * used / d.TotalBytes : 0;
+        var lines = new List<string>
+        {
+            $"Volume     {d.Root}  {(string.IsNullOrEmpty(d.VolumeLabel) ? "(no label)" : d.VolumeLabel)}",
+            $"Filesystem {d.FileSystem}   cluster {d.ClusterSize:N0} B",
+            $"Capacity   {ByteFormatter.Format(d.TotalBytes)}",
+            $"Used       {ByteFormatter.Format(used)}  ({usedPct:F1}%)",
+            $"Free       {ByteFormatter.Format(d.FreeBytes)}",
+        };
+        if (d.Model is not null)
+            lines.Add($"Disk       {d.Model}");
+        if (d.MediaType is not null)
+            lines.Add($"Media      {d.MediaType}{(d.SpindleSpeedRpm is { } rpm ? $" ({rpm:N0} rpm)" : "")}");
+        if (d.BusType is not null)
+            lines.Add($"Bus        {d.BusType}");
+        if (d.Health is not null)
+            lines.Add($"Health     {d.Health}");
+
+        DriveInfoText.Text = string.Join("\n", lines);
+    }
 
     private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)
     {

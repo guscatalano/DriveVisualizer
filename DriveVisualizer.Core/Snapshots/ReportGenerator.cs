@@ -190,6 +190,17 @@ public static class ReportGenerator
 
         AppendDeltaTable(sb, "What grew", deltas.Where(d => d.Delta > 0).OrderByDescending(d => d.Delta).Take(20), positive: true);
         AppendDeltaTable(sb, "What shrank", deltas.Where(d => d.Delta < 0).OrderBy(d => d.Delta).Take(20), positive: false);
+
+        var fileMovers = HistoryChart.ComputeFileMovers(baseline, current, 20);
+        if (fileMovers.Count > 0)
+        {
+            sb.Append("<h2>Largest file changes</h2><table><tbody>");
+            foreach (var (path, delta) in fileMovers)
+                sb.Append($"<tr><td style=\"text-align:left\" class=\"path\">{WebUtility.HtmlEncode(path)}</td>" +
+                          $"<td class=\"num {(delta > 0 ? "pos" : "neg")}\">{(delta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(delta))}</td></tr>");
+            sb.Append("</tbody></table>");
+            sb.Append("<div class=\"muted\" style=\"font-size:12px;margin-top:4px\">File changes are tracked among each snapshot's largest files; a file listed as removed may also have shrunk out of that set.</div>");
+        }
     }
 
     private static void AppendDeltaTable(StringBuilder sb, string title, IEnumerable<(string Path, long Then, long Delta, long Now)> rows, bool positive)

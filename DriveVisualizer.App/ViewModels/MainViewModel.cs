@@ -127,19 +127,64 @@ public partial class MainViewModel : ObservableObject
     public static string GetHistoryDirectory(string target) =>
         Path.Combine(GetHistoryRootDirectory(), SanitizeTarget(target));
 
+    private readonly DispatcherQueueTimer _autoScanTimer;
+
     /// <summary>
-    /// Filename granularity controls how often a NEW snapshot appears: scans
-    /// within the same period overwrite that period's file.
+    /// Re-scans the current target automatically when the newest snapshot is
+    /// older than the configured cadence (0 = manual only). Runs only while
+    /// the app is open — there is no background service.
+    /// </summary>
+    private void AutoScanTick()
+    {
+        if (IsScanning || _refreshBusy || _root is null)
+            return;
+        if (!Services.AppSettings.AutoSaveSnapshots)
+            return;
+        int frequency = Services.AppSettings.SnapshotFrequency;
+        if (frequency == 0)
+            return;
+        if (CurrentSnapshot is not { } current ||
+            !string.Equals(SelectedTarget, current.Target, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        TimeSpan period = frequency switch
+        {
+            1 => TimeSpan.FromHours(1),
+            3 => TimeSpan.FromDays(7),
+            _ => TimeSpan.FromDays(1),
+        };
+
+        DateTime newestUtc = DateTime.MinValue;
+        try
+        {
+            string dir = GetHistoryDirectory(current.Target);
+            if (Directory.Exists(dir))
+                newestUtc = Directory.GetFiles(dir, "*.dvsnap")
+                    .Select(File.GetLastWriteTimeUtc)
+                    .DefaultIfEmpty(DateTime.MinValue)
+                    .Max();
+        }
+        catch { return; }
+
+        if (DateTime.UtcNow - newestUtc >= period)
+        {
+            StatusText = $"Automatic snapshot: rescanning {current.Target}…";
+            ScanOrStopCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
+    /// Filename granularity matches the cadence: scans within the same period
+    /// overwrite that period's file (manual-only uses daily granularity).
     /// </summary>
     private static string SnapshotFileName(int frequency)
     {
         var now = DateTime.Now;
         return frequency switch
         {
-            0 => $"{now:yyyy-MM-dd_HHmmss}.dvsnap",                                              // every scan
             1 => $"{now:yyyy-MM-dd_HH}h.dvsnap",                                                 // hourly
             3 => $"{System.Globalization.ISOWeek.GetYear(now)}-W{System.Globalization.ISOWeek.GetWeekOfYear(now):D2}.dvsnap", // weekly
-            _ => $"{now:yyyy-MM-dd}.dvsnap",                                                     // daily
+            _ => $"{now:yyyy-MM-dd}.dvsnap",                                                     // manual / daily
         };
     }
 
@@ -220,6 +265,14 @@ public partial class MainViewModel : ObservableObject
         _watchTimer.Interval = TimeSpan.FromMilliseconds(2500);
         _watchTimer.IsRepeating = true;
         _watchTimer.Tick += (_, _) => WatchTick();
+
+        // Automatic snapshots: while the app runs, re-scan the current target
+        // when the newest snapshot is older than the configured cadence.
+        _autoScanTimer = dispatcher.CreateTimer();
+        _autoScanTimer.Interval = TimeSpan.FromMinutes(2);
+        _autoScanTimer.IsRepeating = true;
+        _autoScanTimer.Tick += (_, _) => AutoScanTick();
+        _autoScanTimer.Start();
 
         foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady))
             Targets.Add(drive.Name);

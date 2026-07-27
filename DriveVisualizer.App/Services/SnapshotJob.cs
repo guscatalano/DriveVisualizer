@@ -18,6 +18,31 @@ public static class SnapshotJob
         try
         {
             Directory.CreateDirectory(logDir);
+
+            // If something (usually the open app) already snapshotted this period,
+            // skip — same coordination the in-app timer uses, via the shared folder.
+            int frequency = AppSettings.SnapshotFrequency;
+            TimeSpan period = frequency switch
+            {
+                1 => TimeSpan.FromHours(1),
+                3 => TimeSpan.FromDays(7),
+                _ => TimeSpan.FromDays(1),
+            };
+            string existingDir = MainViewModel.GetHistoryDirectory(target);
+            if (Directory.Exists(existingDir))
+            {
+                var newestUtc = Directory.GetFiles(existingDir, "*.dvsnap")
+                    .Select(File.GetLastWriteTimeUtc)
+                    .DefaultIfEmpty(DateTime.MinValue)
+                    .Max();
+                if (DateTime.UtcNow - newestUtc < period * 0.9)
+                {
+                    File.AppendAllText(logPath,
+                        $"[{DateTime.Now:O}] SKIP {target}: snapshot from {newestUtc:O} is still fresh\n");
+                    return;
+                }
+            }
+
             var scanner = new ParallelScanner();
             var result = await scanner.ScanAsync(target);
             var snapshot = ScanSnapshot.Build(result.Root, target, DateTime.UtcNow);

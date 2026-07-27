@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MSI wrapper around the self-contained unpackaged publish output.
+     Build: wix build installer\Package.wxs -d PublishDir=<publish folder> -arch x64 -o DriveVisualizer.msi -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="DriveVisualizer"
+      Manufacturer="Gus Catalano"
+      Version="1.0.0"
+      UpgradeCode="7f1c2f7e-9b1a-4c93-a2c4-d3b8e1c0aa42"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DriveVisualizer is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DriveVisualizer">
+        <Files Include="$(var.PublishDir)\**" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="5d0b7a61-46f3-4b8e-9c11-8e7a2f6b3d90">
+        <Shortcut
+            Id="AppShortcut"
+            Name="DriveVisualizer"
+            Description="See what's eating your disk"
+            Target="[INSTALLFOLDER]DriveVisualizer.App.exe"
+            WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\DriveVisualizer" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Package>
+</Wix>

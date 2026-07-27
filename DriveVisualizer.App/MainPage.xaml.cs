@@ -67,6 +67,8 @@ public sealed partial class MainPage : Page
         ViewModel = new MainViewModel(DispatcherQueue);
         InitializeComponent();
 
+        ZoomInIcon.Glyph = "";
+        ZoomOutSmallIcon.Glyph = "";
         ZoomOutIcon.Glyph = "";        // back arrow
         LayoutToggleIcon.Glyph = "";   // dock bottom
 
@@ -1297,6 +1299,20 @@ public sealed partial class MainPage : Page
     }
 
     private void ZoomOut_Click(object sender, RoutedEventArgs e) => ZoomOutOneLevel();
+
+    private void ZoomIn_Click(object sender, RoutedEventArgs e)
+    {
+        var node = ViewModel.SelectedRow?.Node;
+        var dir = node is null ? null : node.IsDirectory ? node : node.Parent;
+        if (dir is null || ReferenceEquals(dir, _treemapRoot) || !IsAttachedToScanRoot(dir))
+        {
+            ViewModel.StatusText = "Select a folder (in the tree or the map) to zoom into.";
+            return;
+        }
+        _treemapRoot = dir;
+        UpdateZoomBar();
+        RecomputeTreemap();
+    }
 
     private void EscapeAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {

@@ -328,6 +328,19 @@
                         <TextBlock x:Name="ZoomPathText" Style="{ThemeResource CaptionTextBlockStyle}" />
                     </Border>
                 </StackPanel>
+                <StackPanel
+                    Orientation="Vertical" Spacing="4"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,10,10">
+                    <Button x:Name="ZoomInButton" Padding="7" Click="ZoomIn_Click"
+                            ToolTipService.ToolTip="Zoom into the selected folder (or double-click the map)">
+                        <FontIcon x:Name="ZoomInIcon" FontSize="14" />
+                    </Button>
+                    <Button x:Name="ZoomOutSmallButton" Padding="7" Click="ZoomOut_Click"
+                            ToolTipService.ToolTip="Zoom out one level (Esc)">
+                        <FontIcon x:Name="ZoomOutSmallIcon" FontSize="14" />
+                    </Button>
+                </StackPanel>
                 <Border
                     x:Name="HoverTip"
                     Visibility="Collapsed"

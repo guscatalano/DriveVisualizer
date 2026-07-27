@@ -28,6 +28,7 @@ public sealed partial class SettingsPage : Page
         ThemeCombo.SelectedIndex = Math.Clamp(Services.AppSettings.Theme, 0, 2);
         FrequencyCombo.SelectedIndex = Math.Clamp(Services.AppSettings.SnapshotFrequency, 0, 3);
         RetentionCombo.SelectedIndex = Math.Clamp(Services.AppSettings.SnapshotRetention, 0, 5);
+        ScheduledTaskToggle.IsOn = Services.ScheduledSnapshotTask.IsRegistered();
 
         string version;
         try
@@ -68,6 +69,54 @@ public sealed partial class SettingsPage : Page
             return;
         Services.AppSettings.Theme = ThemeCombo.SelectedIndex;
         ApplyTheme(ThemeCombo.SelectedIndex);
+    }
+
+    private async void ScheduledTask_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+
+        if (!ScheduledTaskToggle.IsOn)
+        {
+            var (ok, msg) = await Task.Run(Services.ScheduledSnapshotTask.Unregister);
+            if (_vm is not null)
+                _vm.StatusText = ok ? "Background snapshot task removed." : $"Could not remove task: {msg}";
+            return;
+        }
+
+        string? target = _vm?.CurrentSnapshot?.Target ?? _vm?.SelectedTarget;
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            _loading = true;
+            ScheduledTaskToggle.IsOn = false;
+            _loading = false;
+            await new ContentDialog
+            {
+                Title = "Pick a target first",
+                Content = "Run a scan (or select a drive) so there is a target for the scheduled task to snapshot.",
+                CloseButtonText = "OK",
+                XamlRoot = XamlRoot,
+            }.ShowAsync();
+            return;
+        }
+
+        int frequency = Services.AppSettings.SnapshotFrequency;
+        var (created, message) = await Task.Run(() => Services.ScheduledSnapshotTask.Register(target, frequency));
+        if (created)
+        {
+            string cadence = frequency switch { 1 => "hourly", 3 => "weekly", _ => "daily" };
+            ScheduledTaskDesc.Text = $"Scheduled: {cadence} hidden scan of {target}. Re-enable after changing the cadence or target.";
+            if (_vm is not null)
+                _vm.StatusText = $"Background snapshot task registered ({cadence}, {target}).";
+        }
+        else
+        {
+            _loading = true;
+            ScheduledTaskToggle.IsOn = false;
+            _loading = false;
+            if (_vm is not null)
+                _vm.StatusText = $"Could not register task: {message}";
+        }
     }
 
     private void Frequency_Changed(object sender, SelectionChangedEventArgs e)

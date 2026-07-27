@@ -68,9 +68,30 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        // Headless mode for the scheduled task: scan, snapshot, exit — no window.
+        var cmdArgs = Environment.GetCommandLineArgs();
+        int snapshotArg = Array.IndexOf(cmdArgs, "--snapshot");
+        if (snapshotArg >= 0 && snapshotArg + 1 < cmdArgs.Length)
+        {
+            RunHeadlessSnapshot(cmdArgs[snapshotArg + 1]);
+            return;
+        }
+
         _window = new MainWindow();
         Window = _window;
         SettingsPage.ApplyTheme(Services.AppSettings.Theme);
         _window.Activate();
+    }
+
+    private async void RunHeadlessSnapshot(string target)
+    {
+        try
+        {
+            await Services.SnapshotJob.RunAsync(target);
+        }
+        finally
+        {
+            Exit();
+        }
     }
 }

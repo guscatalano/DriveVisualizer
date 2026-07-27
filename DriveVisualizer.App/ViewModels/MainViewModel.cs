@@ -177,7 +177,7 @@ public partial class MainViewModel : ObservableObject
     /// Filename granularity matches the cadence: scans within the same period
     /// overwrite that period's file (manual-only uses daily granularity).
     /// </summary>
-    private static string SnapshotFileName(int frequency)
+    public static string SnapshotFileName(int frequency)
     {
         var now = DateTime.Now;
         return frequency switch
@@ -189,7 +189,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Prunes a target's snapshots per the retention setting (newest always kept).</summary>
-    private static void ApplyRetention(string historyDir, int retention)
+    public static void ApplyRetention(string historyDir, int retention)
     {
         if (retention == 0)
             return;

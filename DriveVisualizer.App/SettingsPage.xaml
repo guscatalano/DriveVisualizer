@@ -146,8 +146,21 @@
                             <Button Content="Clear…" Click="ClearHistory_Click" />
                         </StackPanel>
                     </Grid>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Snapshot even when the app is closed" Style="{StaticResource CardTitleStyle}" />
+                            <TextBlock x:Name="ScheduledTaskDesc" Style="{StaticResource CardDescStyle}"
+                                       Text="Registers a Windows scheduled task that runs a hidden scan of the current target at the cadence above. Re-enable after changing the cadence or target." />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="ScheduledTaskToggle" Grid.Column="1" MinWidth="0" Margin="0,-4,-12,-8"
+                                      Toggled="ScheduledTask_Toggled" />
+                    </Grid>
                     <TextBlock Style="{StaticResource CardDescStyle}"
-                               Text="⚠ Snapshots are only taken when a scan completes — DriveVisualizer has no background service, so it must be running (and scanning) for history to accumulate." />
+                               Text="Without the scheduled task, snapshots are only taken while DriveVisualizer itself is running." />
                 </StackPanel>
             </Border>
 

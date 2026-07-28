@@ -136,15 +136,18 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void AutoScanTick()
     {
-        if (IsScanning || _refreshBusy || _root is null)
+        if (IsScanning || _refreshBusy)
             return;
         if (!Services.AppSettings.AutoSaveSnapshots)
             return;
         int frequency = Services.AppSettings.SnapshotFrequency;
         if (frequency == 0)
             return;
-        if (CurrentSnapshot is not { } current ||
-            !string.Equals(SelectedTarget, current.Target, StringComparison.OrdinalIgnoreCase))
+
+        // No manual scan required this session: any selected target that has
+        // been snapshotted before resumes its cadence as soon as the app opens.
+        string? target = SelectedTarget;
+        if (string.IsNullOrWhiteSpace(target))
             return;
 
         TimeSpan period = frequency switch
@@ -154,21 +157,22 @@ public partial class MainViewModel : ObservableObject
             _ => TimeSpan.FromDays(1),
         };
 
-        DateTime newestUtc = DateTime.MinValue;
+        DateTime newestUtc;
         try
         {
-            string dir = GetHistoryDirectory(current.Target);
-            if (Directory.Exists(dir))
-                newestUtc = Directory.GetFiles(dir, "*.dvsnap")
-                    .Select(File.GetLastWriteTimeUtc)
-                    .DefaultIfEmpty(DateTime.MinValue)
-                    .Max();
+            string dir = GetHistoryDirectory(target);
+            if (!Directory.Exists(dir))
+                return; // never snapshotted — don't start scanning targets unprompted
+            newestUtc = Directory.GetFiles(dir, "*.dvsnap")
+                .Select(File.GetLastWriteTimeUtc)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
         }
         catch { return; }
 
         if (DateTime.UtcNow - newestUtc >= period)
         {
-            StatusText = $"Automatic snapshot: rescanning {current.Target}…";
+            StatusText = $"Automatic snapshot: rescanning {target}…";
             ScanOrStopCommand.Execute(null);
         }
     }

@@ -389,6 +389,9 @@ public sealed partial class MainPage : Page
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
     }
 
+    /// <summary>Guards the report/history builders against double-clicks while busy.</summary>
+    private bool _reportBusy;
+
     private async void Report_History(object sender, RoutedEventArgs e)
     {
         if (ViewModel.CurrentSnapshot is not { } current)
@@ -396,6 +399,10 @@ public sealed partial class MainPage : Page
             ViewModel.StatusText = "Run a scan first.";
             return;
         }
+        if (_reportBusy)
+            return;
+        _reportBusy = true;
+        ViewModel.StatusText = "Building size history — this loads every stored snapshot, give it a moment…";
         try
         {
             string dir = MainViewModel.GetHistoryDirectory(current.Target);
@@ -428,16 +435,23 @@ public sealed partial class MainPage : Page
             }
             string html = await Task.Run(() =>
             {
-                var history = files.Select(DriveVisualizer.Core.Snapshots.ScanSnapshot.Load).ToList();
+                var history = files.AsParallel().AsOrdered()
+                    .Select(DriveVisualizer.Core.Snapshots.ScanSnapshot.Load)
+                    .ToList();
                 return DriveVisualizer.Core.Snapshots.HistoryChart.BuildHtml(history);
             });
             string path = Path.Combine(Path.GetTempPath(), $"DriveVisualizer-history-{DateTime.Now:yyyyMMdd-HHmmss}.html");
             await File.WriteAllTextAsync(path, html);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+            ViewModel.StatusText = $"Size history opened in your browser ({files.Length} snapshots).";
         }
         catch (Exception ex)
         {
             ViewModel.StatusText = $"Could not build history: {ex.Message}";
+        }
+        finally
+        {
+            _reportBusy = false;
         }
     }
 

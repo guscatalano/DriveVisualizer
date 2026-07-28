@@ -79,6 +79,7 @@ public sealed partial class SettingsPage : Page
         if (!ScheduledTaskToggle.IsOn)
         {
             var (ok, msg) = await Task.Run(Services.ScheduledSnapshotTask.Unregister);
+            Services.AppSettings.ScheduledTaskTarget = "";
             if (_vm is not null)
                 _vm.StatusText = ok ? "Background snapshot task removed." : $"Could not remove task: {msg}";
             return;
@@ -104,8 +105,9 @@ public sealed partial class SettingsPage : Page
         var (created, message) = await Task.Run(() => Services.ScheduledSnapshotTask.Register(target, frequency));
         if (created)
         {
+            Services.AppSettings.ScheduledTaskTarget = target;
             string cadence = frequency switch { 1 => "hourly", 3 => "weekly", _ => "daily" };
-            ScheduledTaskDesc.Text = $"Scheduled: {cadence} hidden scan of {target}. Re-enable after changing the cadence or target.";
+            ScheduledTaskDesc.Text = $"Scheduled: {cadence} hidden scan of {target}. Cadence changes update the task automatically; re-enable to change the target.";
             if (_vm is not null)
                 _vm.StatusText = $"Background snapshot task registered ({cadence}, {target}).";
         }
@@ -119,10 +121,26 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void Frequency_Changed(object sender, SelectionChangedEventArgs e)
+    private async void Frequency_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (!_loading && FrequencyCombo.SelectedIndex >= 0)
-            Services.AppSettings.SnapshotFrequency = FrequencyCombo.SelectedIndex;
+        if (_loading || FrequencyCombo.SelectedIndex < 0)
+            return;
+        int frequency = FrequencyCombo.SelectedIndex;
+        Services.AppSettings.SnapshotFrequency = frequency;
+
+        // Keep the background task in step with the cadence automatically.
+        string storedTarget = Services.AppSettings.ScheduledTaskTarget;
+        if (string.IsNullOrEmpty(storedTarget))
+            storedTarget = _vm?.CurrentSnapshot?.Target ?? _vm?.SelectedTarget ?? "";
+        if (!string.IsNullOrEmpty(storedTarget) &&
+            await Task.Run(Services.ScheduledSnapshotTask.IsRegistered))
+        {
+            var (ok, msg) = await Task.Run(() => Services.ScheduledSnapshotTask.Register(storedTarget, frequency));
+            if (_vm is not null)
+                _vm.StatusText = ok
+                    ? $"Background snapshot task updated to the new cadence ({storedTarget})."
+                    : $"Could not update background task: {msg}";
+        }
     }
 
     private void Retention_Changed(object sender, SelectionChangedEventArgs e)

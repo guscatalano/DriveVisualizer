@@ -133,6 +133,28 @@ public static class AppSettings
         set => SetInt(nameof(SnapshotRetention), value);
     }
 
+    /// <summary>Target path baked into the registered scheduled task ("" when none).</summary>
+    public static string ScheduledTaskTarget
+    {
+        get
+        {
+            if (Container is { } c)
+                return c.Values[nameof(ScheduledTaskTarget)] as string ?? "";
+            return FileValues.TryGetValue(nameof(ScheduledTaskTarget), out var e) && e.ValueKind == System.Text.Json.JsonValueKind.String
+                ? e.GetString() ?? "" : "";
+        }
+        set
+        {
+            if (Container is { } c)
+            {
+                c.Values[nameof(ScheduledTaskTarget)] = value;
+                return;
+            }
+            FileValues[nameof(ScheduledTaskTarget)] = System.Text.Json.JsonSerializer.SerializeToElement(value);
+            SaveFileValues();
+        }
+    }
+
     /// <summary>App theme: 0 system, 1 light, 2 dark.</summary>
     public static int Theme
     {

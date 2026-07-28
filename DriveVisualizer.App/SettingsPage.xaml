@@ -154,7 +154,7 @@
                         <StackPanel>
                             <TextBlock Text="Snapshot even when the app is closed" Style="{StaticResource CardTitleStyle}" />
                             <TextBlock x:Name="ScheduledTaskDesc" Style="{StaticResource CardDescStyle}"
-                                       Text="Registers a Windows scheduled task that runs a hidden scan of the current target at the cadence above. Re-enable after changing the cadence or target." />
+                                       Text="Registers a Windows scheduled task that runs a hidden scan of the current target at the cadence above. Cadence changes update the task automatically; re-enable to change the target." />
                         </StackPanel>
                         <ToggleSwitch x:Name="ScheduledTaskToggle" Grid.Column="1" MinWidth="0" Margin="0,-4,-12,-8"
                                       Toggled="ScheduledTask_Toggled" />

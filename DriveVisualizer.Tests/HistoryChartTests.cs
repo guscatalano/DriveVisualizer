@@ -36,12 +36,12 @@ public sealed class HistoryChartTests
         Assert.Contains("var(--cat0)", html);   // apps bars
         Assert.Contains("var(--cat7)", html);   // media bars
         Assert.Contains("Video &amp; audio", html);
-        Assert.Contains("3 daily snapshots", html);
-        Assert.Contains("Per day", html);
+        Assert.Contains("3 snapshots", html);
+        Assert.Contains("Per snapshot", html);
         Assert.Contains("+", html);             // day-over-day delta present
         Assert.Contains("prefers-color-scheme: dark", html);
-        Assert.Contains("By category, per day", html);
-        Assert.Contains("What changed each day", html);
+        Assert.Contains("By category, per snapshot", html);
+        Assert.Contains("What changed between snapshots", html);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public sealed class HistoryChartTests
 
         string html = HistoryChart.BuildHtml([day1, day2]);
 
-        Assert.Contains("What changed each day", html);
+        Assert.Contains("What changed between snapshots", html);
         Assert.Contains(@"C:\x\media", html);   // the mover is named with its path
         Assert.Contains("Jul 25", html);
         Assert.Contains("Jul 26", html);

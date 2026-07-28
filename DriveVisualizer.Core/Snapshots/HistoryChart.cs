@@ -62,7 +62,7 @@ public static class HistoryChart
             </style></head><body><div class="page">
             """);
 
-        sb.Append($"<h1>Size history</h1><div class=\"muted\">{WebUtility.HtmlEncode(target)} — {ordered.Count} daily snapshots</div>");
+        sb.Append($"<h1>Size history</h1><div class=\"muted\">{WebUtility.HtmlEncode(target)} — {ordered.Count} snapshots</div>");
 
         AppendChart(sb, ordered);
         AppendLegend(sb, ordered);
@@ -70,7 +70,7 @@ public static class HistoryChart
         AppendCategoryBreakdown(sb, ordered);
         AppendDailyChanges(sb, ordered);
 
-        sb.Append("<p class=\"muted\" style=\"margin-top:24px;font-size:12px\">One snapshot per day is kept while scans run with auto-save on.</p>");
+        sb.Append("<p class=\"muted\" style=\"margin-top:24px;font-size:12px\">Snapshot cadence and retention are configured in Settings; entries accumulate while scans run (or via the background task).</p>");
         sb.Append("</div></body></html>");
         return sb.ToString();
     }
@@ -95,13 +95,14 @@ public static class HistoryChart
         float step = plotW / ordered.Count;
         float barW = Math.Min(46f, step * 0.7f);
         int labelEvery = Math.Max(1, ordered.Count / 10);
+        string labelFormat = LabelFormat(ordered);
 
         for (int i = 0; i < ordered.Count; i++)
         {
             var snap = ordered[i];
             float x = padL + step * i + (step - barW) / 2f;
             float yCursor = padT + plotH;
-            string day = snap.TimestampUtc.ToLocalTime().ToString("M/d", CultureInfo.InvariantCulture);
+            string day = snap.TimestampUtc.ToLocalTime().ToString(labelFormat, CultureInfo.InvariantCulture);
 
             for (int c = 0; c < snap.CategoryBytes.Length && c < CategoryHexDark.Length; c++)
             {
@@ -135,9 +136,15 @@ public static class HistoryChart
         sb.Append("</div>");
     }
 
+    /// <summary>Axis/heading label format: include the time when snapshots share a calendar day.</summary>
+    private static string LabelFormat(List<ScanSnapshot> ordered) =>
+        ordered.Select(s => s.TimestampUtc.ToLocalTime().Date).Distinct().Count() < ordered.Count
+            ? "M/d HH:mm"
+            : "M/d";
+
     private static void AppendTable(StringBuilder sb, List<ScanSnapshot> ordered)
     {
-        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">Per day</h2><table><thead><tr><th>Date</th><th>Total</th><th>Change</th><th>Files</th></tr></thead><tbody>");
+        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">Per snapshot</h2><table><thead><tr><th>Taken</th><th>Total</th><th>Change</th><th>Files</th></tr></thead><tbody>");
         for (int i = 0; i < ordered.Count; i++)
         {
             var snap = ordered[i];
@@ -160,16 +167,17 @@ public static class HistoryChart
             for (int c = 0; c < s.CategoryBytes.Length && c < used.Length; c++)
                 used[c] |= s.CategoryBytes[c] > 0;
 
-        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">By category, per day</h2><table><thead><tr><th>Date</th>");
+        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">By category, per snapshot</h2><table><thead><tr><th>Taken</th>");
         for (int c = 0; c < used.Length; c++)
             if (used[c])
                 sb.Append($"<th><span class=\"swatch\" style=\"display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--cat{c});margin-right:4px\"></span>{WebUtility.HtmlEncode(FileClassification.DisplayNames[c])}</th>");
         sb.Append("</tr></thead><tbody>");
 
+        string rowFormat = LabelFormat(ordered) == "M/d" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm";
         for (int i = 0; i < ordered.Count; i++)
         {
             var snap = ordered[i];
-            sb.Append($"<tr><td>{snap.TimestampUtc.ToLocalTime():yyyy-MM-dd}</td>");
+            sb.Append($"<tr><td>{snap.TimestampUtc.ToLocalTime().ToString(rowFormat)}</td>");
             for (int c = 0; c < used.Length; c++)
             {
                 if (!used[c])
@@ -195,7 +203,8 @@ public static class HistoryChart
         if (ordered.Count < 2)
             return;
 
-        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">What changed each day</h2>");
+        sb.Append("<h2 style=\"font-size:16px;margin:24px 0 8px\">What changed between snapshots</h2>");
+        string headingFormat = LabelFormat(ordered) == "M/d" ? "MMM d" : "MMM d HH:mm";
 
         for (int i = start; i < ordered.Count; i++)
         {
@@ -225,7 +234,7 @@ public static class HistoryChart
 
             string totalText = totalDelta == 0 ? "no net change"
                 : $"<span class=\"{(totalDelta > 0 ? "pos" : "neg")}\">{(totalDelta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(totalDelta))}</span>";
-            sb.Append($"<h3 style=\"font-size:13px;margin:16px 0 4px\" class=\"muted\">{before.TimestampUtc.ToLocalTime():MMM d} → {after.TimestampUtc.ToLocalTime():MMM d} · {totalText}</h3>");
+            sb.Append($"<h3 style=\"font-size:13px;margin:16px 0 4px\" class=\"muted\">{before.TimestampUtc.ToLocalTime().ToString(headingFormat)} → {after.TimestampUtc.ToLocalTime().ToString(headingFormat)} · {totalText}</h3>");
 
             var movers = deltas
                 .OrderByDescending(x => Math.Abs(x.Delta))

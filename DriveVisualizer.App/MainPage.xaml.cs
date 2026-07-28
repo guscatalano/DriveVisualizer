@@ -394,9 +394,11 @@ public sealed partial class MainPage : Page
 
     private async void Report_History(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.CurrentSnapshot is not { } current)
+        // History reads stored snapshots — no scan needed, just a target.
+        string? target = ViewModel.CurrentSnapshot?.Target ?? ViewModel.SelectedTarget;
+        if (string.IsNullOrWhiteSpace(target))
         {
-            ViewModel.StatusText = "Run a scan first.";
+            ViewModel.StatusText = "Pick a drive or folder first.";
             return;
         }
         if (_reportBusy)
@@ -405,7 +407,7 @@ public sealed partial class MainPage : Page
         ViewModel.StatusText = "Building size history — this loads every stored snapshot, give it a moment…";
         try
         {
-            string dir = MainViewModel.GetHistoryDirectory(current.Target);
+            string dir = MainViewModel.GetHistoryDirectory(target);
             var files = Directory.Exists(dir)
                 ? Directory.GetFiles(dir, "*.dvsnap").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray()
                 : [];
@@ -423,7 +425,7 @@ public sealed partial class MainPage : Page
                         "— per scan, hour, day, or week — is set in Settings, along with how many to retain.\n\n" +
                         "Once two or more snapshots exist, this menu turns them into a chart with per-category " +
                         "breakdowns and the folders that changed between snapshots.\n\n" +
-                        $"Recorded so far: {files.Length} snapshot{(files.Length == 1 ? "" : "s")} for {current.Target}. " +
+                        $"Recorded so far: {files.Length} snapshot{(files.Length == 1 ? "" : "s")} for {target}. " +
                         "Note: snapshots are only taken while the app is running a scan — there is no background service." +
                         autoSaveNote,
                     CloseButtonText = "Got it",

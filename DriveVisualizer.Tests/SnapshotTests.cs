@@ -79,6 +79,59 @@ public sealed class SnapshotTests
     }
 
     [Fact]
+    public void DriveHealthRoundTripsAndShowsUpInReports()
+    {
+        var root = BuildSampleTree();
+        var snap = ScanSnapshot.Build(root, @"C:\scan", DateTime.UtcNow);
+        snap.DriveHealth = new SnapshotDriveHealth
+        {
+            Model = "Contoso NVMe SSD 2TB",
+            MediaType = "SSD",
+            BusType = "NVMe",
+            Health = "Healthy",
+            VolumeTotalBytes = 2_000_000_000_000,
+            VolumeFreeBytes = 500_000_000_000,
+            TemperatureC = 47,
+            WearPercent = 3,
+            PowerOnHours = 1234,
+            DataWrittenBytes = 20_000_000_000_000,
+        };
+
+        string path = Path.Combine(Path.GetTempPath(), $"dv_{Guid.NewGuid():N}.dvsnap");
+        try
+        {
+            snap.Save(path);
+            var loaded = ScanSnapshot.Load(path);
+            Assert.NotNull(loaded.DriveHealth);
+            Assert.Equal(47, loaded.DriveHealth!.TemperatureC);
+            Assert.Equal(3, loaded.DriveHealth.WearPercent);
+            Assert.Equal(500_000_000_000, loaded.DriveHealth.VolumeFreeBytes);
+
+            string report = ReportGenerator.BuildHtml(loaded);
+            Assert.Contains("Contoso NVMe SSD 2TB", report);
+            Assert.Contains("47 °C", report);
+
+            string history = HistoryChart.BuildHtml([loaded]);
+            Assert.Contains("Drive health", history);
+            Assert.Contains("3%", history);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SnapshotsWithoutDriveHealthStillLoadAndReport()
+    {
+        var root = BuildSampleTree();
+        var snap = ScanSnapshot.Build(root, @"C:\scan", DateTime.UtcNow);
+        Assert.Null(snap.DriveHealth);
+        string html = HistoryChart.BuildHtml([snap]);
+        Assert.DoesNotContain("Drive health", html);
+    }
+
+    [Fact]
     public void ReportContainsSummaryCategoriesAndTopEntries()
     {
         var root = BuildSampleTree();

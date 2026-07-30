@@ -352,6 +352,7 @@ public partial class MainViewModel : ObservableObject
                 var (snapshot, previous, baselinePath, deltas) = await Task.Run(() =>
                 {
                     var snap = ScanSnapshot.Build(scanRoot, target, DateTime.UtcNow);
+                    snap.DriveHealth = Services.DriveStats.GetSnapshotHealth(target);
                     ScanSnapshot? prev = null;
                     string? prevPath = null;
                     if (autoSave)

@@ -67,6 +67,7 @@ public static class HistoryChart
         AppendChart(sb, ordered);
         AppendLegend(sb, ordered);
         AppendTable(sb, ordered);
+        AppendDriveHealth(sb, ordered);
         AppendCategoryBreakdown(sb, ordered);
         AppendDailyChanges(sb, ordered);
 
@@ -155,6 +156,56 @@ public static class HistoryChart
                       $"<td>{ByteFormatter.Format(snap.TotalAllocated)}</td>" +
                       $"<td>{deltaText}</td>" +
                       $"<td>{snap.TotalFiles:N0}</td></tr>");
+        }
+        sb.Append("</tbody></table>");
+    }
+
+    /// <summary>
+    /// Free space, temperature, wear, and lifetime writes per snapshot — the
+    /// slow-moving numbers that only mean something as a series.
+    /// </summary>
+    private static void AppendDriveHealth(StringBuilder sb, List<ScanSnapshot> ordered)
+    {
+        var withHealth = ordered.Where(s => s.DriveHealth is not null).ToList();
+        if (withHealth.Count == 0)
+            return;
+
+        var latest = withHealth[^1].DriveHealth!;
+        string disk = latest.Model is null
+            ? ""
+            : $" — {WebUtility.HtmlEncode(latest.Model)}" +
+              (latest.MediaType is null ? "" : $" ({WebUtility.HtmlEncode(latest.MediaType)}{(latest.BusType is null ? "" : $", {WebUtility.HtmlEncode(latest.BusType)}")})");
+        bool anySmart = withHealth.Any(s => s.DriveHealth!.TemperatureC is not null || s.DriveHealth!.WearPercent is not null);
+
+        sb.Append($"<h2 style=\"font-size:16px;margin:24px 0 8px\">Drive health{disk}</h2>");
+        sb.Append("<table><thead><tr><th>Taken</th><th>Free space</th>");
+        if (anySmart)
+            sb.Append("<th>Temp</th><th>Wear</th><th>Lifetime written</th>");
+        sb.Append("<th>Status</th></tr></thead><tbody>");
+
+        string rowFormat = LabelFormat(ordered) == "M/d" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm";
+        for (int i = 0; i < withHealth.Count; i++)
+        {
+            var snap = withHealth[i];
+            var h = snap.DriveHealth!;
+            double freePct = h.VolumeTotalBytes > 0 ? 100.0 * h.VolumeFreeBytes / h.VolumeTotalBytes : 0;
+            long freeDelta = i > 0 ? h.VolumeFreeBytes - withHealth[i - 1].DriveHealth!.VolumeFreeBytes : 0;
+            string freeDeltaHtml = i == 0 || freeDelta == 0
+                ? ""
+                // For free space, shrinking is the bad direction — reuse pos (bad) / neg (good).
+                : $"<br><span class=\"{(freeDelta < 0 ? "pos" : "neg")}\" style=\"font-size:11px\">{(freeDelta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(freeDelta))}</span>";
+
+            string status = h.CriticalWarning is not null
+                ? $"⚠ {WebUtility.HtmlEncode(h.CriticalWarning)}"
+                : h.Health ?? "—";
+
+            sb.Append($"<tr><td>{snap.TimestampUtc.ToLocalTime().ToString(rowFormat)}</td>" +
+                      $"<td>{ByteFormatter.Format(h.VolumeFreeBytes)} ({freePct:F0}%){freeDeltaHtml}</td>");
+            if (anySmart)
+                sb.Append($"<td>{(h.TemperatureC is { } t ? $"{t} °C" : "—")}</td>" +
+                          $"<td>{(h.WearPercent is { } w ? $"{w}%" : "—")}</td>" +
+                          $"<td>{(h.DataWrittenBytes is { } dw ? ByteFormatter.Format(dw) : "—")}</td>");
+            sb.Append($"<td>{status}</td></tr>");
         }
         sb.Append("</tbody></table>");
     }

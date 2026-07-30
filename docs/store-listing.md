@@ -19,45 +19,60 @@ reserved: **GusCatalano.DriveVisualizer**, Store ID **9NRTBGF2T3B6**.
 
 ## Short description / promo line
 
-> See what's eating your disk — scan in seconds, explore it as a treemap, sunburst, or icicle, and clean up safely.
+> Your disk is full. Again. See exactly why in seconds — then watch what changes, day after day.
 
 ## Description
 
 ```
-Wondering where all your disk space went? DriveVisualizer scans an entire drive in
-seconds and turns it into a picture you can actually read.
+Your disk is full. Again. DriveVisualizer shows you exactly why in seconds — and
+unlike every other space analyzer, it keeps watching, so next time you'll know
+exactly what grew, when, and by how much.
 
-EXPLORE IT THREE WAYS
-Classic cushion-shaded treemap, DaisyDisk-style sunburst rings, or a flame-graph
-icicle view. Watch the map assemble live while the scan runs. Hover for details,
-click to locate anything in the folder tree, double-click to dive in.
+SEE YOUR WHOLE DRIVE AT ONCE
+A parallel scanner tears through a million files in seconds while the map builds
+live in front of you. Explore the result as a classic cushion-shaded treemap,
+a sunburst of rings, or a flame-style icicle view — every shape sized by what it
+actually costs you on disk. Hover for details, click to jump to the folder tree,
+double-click to dive deeper.
 
-COLORS THAT MEAN SOMETHING
-Nine semantic categories — apps, archives, pictures, documents, temp & logs, code,
-disk images, video & audio — with a legend, a one-click category filter, and a
-colorblind-validated palette. Folders are tinted by what's inside them.
+COLORS THAT ACTUALLY MEAN SOMETHING
+Video, pictures, code, archives, documents, temp & logs, apps, disk images — nine
+categories, one legend, one-click filtering, and a colorblind-validated palette.
+One glance tells you whether that mystery folder is your vacation footage or a
+node_modules graveyard.
+
+CATCH WHAT CHANGED — THE FEATURE NOBODY ELSE HAS
+Every scan saves a snapshot. From then on:
+• A red/green Change column shows what grew and what shrank, folder by folder.
+• One click opens a then/change/now report naming the exact folders and files
+  that moved.
+• Size history charts weeks of growth, stacked by category, snapshot by snapshot.
+• Snapshots take themselves — hourly, daily, or weekly, even while the app is
+  closed — with retention limits you control. Come back from vacation and see
+  precisely what your PC did without you.
 
 CLEAN UP WITH CONFIDENCE
-Right-click anything to open it, reveal it in Explorer, send it to the Recycle Bin,
-delete it permanently, or compress it to a zip and remove the original. A "Cleanup
-candidates" switch highlights only the safe stuff: temp folders, caches, logs,
-recycle bin, node_modules. Sizes update instantly as you delete.
+Flip on "Cleanup candidates" to highlight only the safe wins: temp folders,
+caches, logs, recycle bin, node_modules. Right-click anything to send it to the
+Recycle Bin, delete it permanently, or compress it to a zip and drop the
+original. Sizes update instantly as you go.
 
-KNOW WHAT CHANGED
-Every scan can save a snapshot. A red/green Change column shows exactly which
-folders grew or shrank since last time, one click opens a full then/change/now
-report, and Size history charts your drive over days and weeks — down to the
-individual files that moved. Snapshots can run on a schedule even when the app
-is closed, with retention limits you control.
+KNOW YOUR DRIVE'S HEALTH
+Full S.M.A.R.T. detail without running as administrator: temperature, wear,
+power-on hours, lifetime data written, unsafe shutdowns, media errors — plus
+model, bus (NVMe/SATA/USB), and SSD vs HDD. Health is stamped into every
+snapshot, so you can watch wear and free space trend over months, not just
+read today's numbers.
 
-FAST AND HONEST
-A parallel Win32 scanner covers a million files in seconds. Junctions and symlinks
-are never double-counted, 260+ character paths just work, and compressed, sparse,
-and cloud-placeholder files report their true size on disk.
+ACCURATE WHERE IT COUNTS
+Junctions and symlinks are never double-counted. 260+ character paths just work.
+Compressed, sparse, and cloud-placeholder files report their true size on disk,
+so the numbers add up to what Windows really uses.
 
-PRIVATE BY DESIGN
-No accounts, no ads, no telemetry, no network access. Everything stays on your
-machine. Open source (MIT) at github.com/guscatalano/DriveVisualizer.
+YOURS, PRIVATELY
+No accounts, no ads, no telemetry, no network access — your file names never
+leave your machine. Free and open source (MIT) at
+github.com/guscatalano/DriveVisualizer.
 ```
 
 ## Product features (Store bullet list)
@@ -68,9 +83,10 @@ machine. Open source (MIT) at github.com/guscatalano/DriveVisualizer.
 - Red/green Change column shows what grew or shrank since your last scan
 - Size history charts your drive over time, per category, file-level detail
 - Scheduled background snapshots that run even when the app is closed
+- S.M.A.R.T. drive health: temperature, wear, power-on hours, lifetime writes
+- Drive health is saved with every snapshot, so wear and free space trend over time
 - Delete to Recycle Bin, delete permanently, or compress-to-zip from a right-click
 - "Cleanup candidates" highlights temp files, caches, logs, and node_modules
-- Drive details at a glance: SSD or HDD, NVMe/SATA/USB bus, health, capacity
 - Junction-safe, long-path-safe, allocated-size accurate — no double counting
 - Exportable HTML reports and shareable snapshot files, dark/light aware
 - Light and dark themes, adjustable layouts, no ads, no telemetry, open source
@@ -89,8 +105,9 @@ background snapshots, HTML reports, light/dark themes.
 
 ## Assets
 
-- Screenshots (1920×1080, demo data): `docs/store/` — upload all of them under
-  "Desktop" screenshots.
+- Screenshots (1920×1080, demo data): `docs/store/` — upload all six under
+  "Desktop" screenshots: treemap, sunburst, settings, Change column, size
+  history, then/change/now report.
 - Store logos are generated from the MSIX package (Assets\*.png) automatically.
 - Upload package: build artifact `DriveVisualizer-store-upload` (.msixupload)
   from the latest CI run, or `artifacts\store\` from a local Release build.

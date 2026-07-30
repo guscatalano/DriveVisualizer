@@ -250,8 +250,38 @@ public sealed partial class MainPage : Page
             lines.Add($"Media      {d.MediaType}{(d.SpindleSpeedRpm is { } rpm ? $" ({rpm:N0} rpm)" : "")}");
         if (d.BusType is not null)
             lines.Add($"Bus        {d.BusType}");
+        if (d.SerialNumber is { Length: > 0 })
+            lines.Add($"Serial     {d.SerialNumber}");
+        if (d.FirmwareVersion is { Length: > 0 })
+            lines.Add($"Firmware   {d.FirmwareVersion}");
+        if (d.LogicalSectorSize is { } ls && d.PhysicalSectorSize is { } ps)
+            lines.Add($"Sectors    {ls:N0} B logical / {ps:N0} B physical");
         if (d.Health is not null)
             lines.Add($"Health     {d.Health}");
+
+        lines.Add("");
+        if (d.Smart is { } sm)
+        {
+            lines.Add($"S.M.A.R.T.  ({sm.Source})");
+            lines.Add($"Status     {(sm.CriticalWarning is null ? "OK — no critical warnings" : $"⚠ {sm.CriticalWarning}")}");
+            if (sm.TemperatureC is { } t)
+                lines.Add($"Temp       {t} °C{(sm.TemperatureMaxC is { } tmax ? $"  (max recorded {tmax} °C)" : "")}");
+            if (sm.WearPercent is { } w)
+                lines.Add($"Wear       {w}% used{(sm.SparePercent is { } sp ? $"  ·  spare {sp}%" : "")}");
+            if (sm.PowerOnHours is { } h)
+                lines.Add($"Power-on   {h:N0} h  (~{h / 24:N0} days)");
+            if (sm.PowerCycles is { } cyc)
+                lines.Add($"Cycles     {cyc:N0} power-on{(sm.UnsafeShutdowns is { } us ? $"  ·  {us:N0} unsafe shutdowns" : "")}");
+            if (sm.DataWrittenBytes is { } dw)
+                lines.Add($"Written    {ByteFormatter.Format(dw)} lifetime{(sm.DataReadBytes is { } dr ? $"  ·  read {ByteFormatter.Format(dr)}" : "")}");
+            if (sm.MediaErrors is { } me)
+                lines.Add($"Media errs {me:N0}");
+        }
+        else
+        {
+            lines.Add("S.M.A.R.T. counters unavailable for this disk");
+            lines.Add("(USB enclosures hide them; running as administrator may help)");
+        }
 
         DriveInfoText.Text = string.Join("\n", lines);
     }

@@ -20,6 +20,31 @@ public sealed class SnapshotFile
 }
 
 /// <summary>
+/// Health of the physical drive hosting the target at snapshot time, so history
+/// can chart free space, temperature, and wear alongside size. All best-effort:
+/// S.M.A.R.T. fields are null when the platform didn't expose them.
+/// </summary>
+public sealed class SnapshotDriveHealth
+{
+    [JsonPropertyName("mo")] public string? Model { get; set; }
+    [JsonPropertyName("me")] public string? MediaType { get; set; }
+    [JsonPropertyName("bu")] public string? BusType { get; set; }
+    [JsonPropertyName("he")] public string? Health { get; set; }
+    [JsonPropertyName("vt")] public long VolumeTotalBytes { get; set; }
+    [JsonPropertyName("vf")] public long VolumeFreeBytes { get; set; }
+    [JsonPropertyName("tc")] public int? TemperatureC { get; set; }
+    [JsonPropertyName("wp")] public int? WearPercent { get; set; }
+    [JsonPropertyName("sp")] public int? SparePercent { get; set; }
+    [JsonPropertyName("ph")] public long? PowerOnHours { get; set; }
+    [JsonPropertyName("pc")] public long? PowerCycles { get; set; }
+    [JsonPropertyName("us")] public long? UnsafeShutdowns { get; set; }
+    [JsonPropertyName("mr")] public long? MediaErrors { get; set; }
+    [JsonPropertyName("dr")] public long? DataReadBytes { get; set; }
+    [JsonPropertyName("dw")] public long? DataWrittenBytes { get; set; }
+    [JsonPropertyName("cw")] public string? CriticalWarning { get; set; }
+}
+
+/// <summary>
 /// A saved scan: totals, per-category bytes, every directory (flat, parent-indexed),
 /// and the largest files. Serialized as gzipped JSON (*.dvsnap).
 /// </summary>
@@ -38,6 +63,9 @@ public sealed class ScanSnapshot
 
     public List<SnapshotFile> TopFiles { get; set; } = [];
     public List<SnapshotDir> Directories { get; set; } = [];
+
+    /// <summary>Drive facts at snapshot time; null in snapshots from older versions.</summary>
+    public SnapshotDriveHealth? DriveHealth { get; set; }
 
     private static readonly JsonSerializerOptions JsonOptions = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault };
 

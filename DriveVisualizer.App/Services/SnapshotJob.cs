@@ -46,6 +46,7 @@ public static class SnapshotJob
             var scanner = new ParallelScanner();
             var result = await scanner.ScanAsync(target);
             var snapshot = ScanSnapshot.Build(result.Root, target, DateTime.UtcNow);
+            snapshot.DriveHealth = DriveStats.GetSnapshotHealth(target);
 
             string historyDir = MainViewModel.GetHistoryDirectory(target);
             Directory.CreateDirectory(historyDir);

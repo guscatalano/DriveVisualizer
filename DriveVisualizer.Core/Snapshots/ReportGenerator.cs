@@ -77,6 +77,7 @@ public static class ReportGenerator
             sb.Append($"<div class=\"muted\" style=\"font-size:12px\">Baseline: {WebUtility.HtmlEncode(baselineSource)}</div>");
 
         AppendSummaryTiles(sb, current, baseline);
+        AppendDriveHealth(sb, current, baseline);
         AppendCategories(sb, current, baseline);
         if (baseline is not null)
             AppendComparison(sb, current, baseline);
@@ -110,6 +111,44 @@ public static class ReportGenerator
             sb.Append($"<div class=\"d {cls}\">{(d > 0 ? "▲ +" : "▼ −")}{text} since baseline</div>");
         }
         sb.Append("</div>");
+    }
+
+    /// <summary>One line of drive facts + free space, with baseline deltas when available.</summary>
+    private static void AppendDriveHealth(StringBuilder sb, ScanSnapshot current, ScanSnapshot? baseline)
+    {
+        var h = current.DriveHealth;
+        if (h is null)
+            return;
+
+        var facts = new List<string>();
+        if (h.Model is not null)
+        {
+            string kind = h.MediaType is null ? "" : $" — {h.MediaType}{(h.BusType is null ? "" : $", {h.BusType}")}";
+            facts.Add(WebUtility.HtmlEncode(h.Model + kind));
+        }
+        double freePct = h.VolumeTotalBytes > 0 ? 100.0 * h.VolumeFreeBytes / h.VolumeTotalBytes : 0;
+        string free = $"{ByteFormatter.Format(h.VolumeFreeBytes)} free ({freePct:F0}%)";
+        if (baseline?.DriveHealth is { } bh && bh.VolumeFreeBytes != h.VolumeFreeBytes)
+        {
+            long delta = h.VolumeFreeBytes - bh.VolumeFreeBytes;
+            // Less free space is the bad direction, so shrinking free gets the "pos" (bad) color.
+            free += $" <span class=\"{(delta < 0 ? "pos" : "neg")}\">{(delta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(delta))} since baseline</span>";
+        }
+        facts.Add(free);
+        if (h.TemperatureC is { } t)
+            facts.Add($"{t} °C");
+        if (h.WearPercent is { } w)
+        {
+            string wear = $"{w}% worn";
+            if (baseline?.DriveHealth?.WearPercent is { } bw && bw != w)
+                wear += $" <span class=\"pos\">(+{w - bw} since baseline)</span>";
+            facts.Add(wear);
+        }
+        if (h.DataWrittenBytes is { } dw)
+            facts.Add($"{ByteFormatter.Format(dw)} written lifetime");
+        facts.Add(h.CriticalWarning is not null ? $"⚠ {WebUtility.HtmlEncode(h.CriticalWarning)}" : h.Health ?? "");
+
+        sb.Append($"<div class=\"muted\" style=\"font-size:12px;margin-top:8px\">Drive: {string.Join(" · ", facts.Where(f => f.Length > 0))}</div>");
     }
 
     private static void AppendCategories(StringBuilder sb, ScanSnapshot current, ScanSnapshot? baseline)

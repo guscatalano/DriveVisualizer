@@ -61,14 +61,12 @@
                 Content="Browse…"
                 Click="Browse_Click"
                 IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
-            <Button x:Name="DriveInfoButton" Padding="8,6" Click="DriveInfo_Click"
-                    ToolTipService.ToolTip="Drive details (SSD/HDD, bus, model)">
-                <FontIcon x:Name="DriveInfoIcon" FontSize="14" />
-                <Button.Flyout>
-                    <Flyout x:Name="DriveInfoFlyout" Placement="BottomEdgeAlignedLeft">
-                        <TextBlock x:Name="DriveInfoText" FontSize="12" FontFamily="Consolas" />
-                    </Flyout>
-                </Button.Flyout>
+            <Button x:Name="DriveInfoButton" Click="DriveInfo_Click"
+                    ToolTipService.ToolTip="Model, partitions, capacity, and S.M.A.R.T. health for the drive behind the current target">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon x:Name="DriveInfoIcon" FontSize="14" VerticalAlignment="Center" />
+                    <TextBlock Text="Drive info" />
+                </StackPanel>
             </Button>
             <Button
                 Style="{StaticResource AccentButtonStyle}"

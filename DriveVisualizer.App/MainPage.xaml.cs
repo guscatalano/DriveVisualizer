@@ -221,19 +221,40 @@ public sealed partial class MainPage : Page
     private async void DriveInfo_Click(object sender, RoutedEventArgs e)
     {
         string? target = ViewModel.SelectedTarget;
-        if (string.IsNullOrWhiteSpace(target))
-        {
-            DriveInfoText.Text = "Pick a drive or folder first.";
-            return;
-        }
-        DriveInfoText.Text = "Reading drive details…";
-        var d = await Task.Run(() => Services.DriveStats.Get(target));
-        if (d is null)
-        {
-            DriveInfoText.Text = "No local drive details available for this target.";
-            return;
-        }
+        var details = string.IsNullOrWhiteSpace(target)
+            ? null
+            : await Task.Run(() => Services.DriveStats.Get(target));
 
+        string body = details is not null
+            ? BuildDriveInfoText(details)
+            : string.IsNullOrWhiteSpace(target)
+                ? "Pick a drive or folder first."
+                : "No local drive details available for this target.";
+        object content = details is null
+            ? new TextBlock { Text = body, FontSize = 13 }
+            : BuildDriveInfoView(details);
+        var dialog = new ContentDialog
+        {
+            Title = "Drive info",
+            Content = new ScrollViewer { Content = content, MaxHeight = 560 },
+            PrimaryButtonText = "Copy",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            args.Cancel = true; // copying shouldn't dismiss the dialog
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(body);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            dialog.PrimaryButtonText = "Copied ✓";
+        };
+        await dialog.ShowAsync();
+    }
+
+    private static string BuildDriveInfoText(Services.DriveDetails d)
+    {
         long used = d.TotalBytes - d.FreeBytes;
         double usedPct = d.TotalBytes > 0 ? 100.0 * used / d.TotalBytes : 0;
         var lines = new List<string>
@@ -259,6 +280,20 @@ public sealed partial class MainPage : Page
         if (d.Health is not null)
             lines.Add($"Health     {d.Health}");
 
+        if (d.Partitions.Count > 0)
+        {
+            lines.Add("");
+            lines.Add($"Partitions ({d.Partitions.Count})");
+            foreach (var p in d.Partitions)
+            {
+                string letter = p.DriveLetter is { } l ? $"{l}:" : "  ";
+                string name = p.VolumeLabel is { Length: > 0 } ? $"\"{p.VolumeLabel}\" " : "";
+                string fs = p.FileSystem is not null ? $"{p.FileSystem}, " : "";
+                string flags = p.IsBoot ? "  · boot" : p.IsSystem ? "  · system" : "";
+                lines.Add($"  #{p.Number} {letter} {name}{p.TypeName} ({fs}{ByteFormatter.Format(p.SizeBytes)}){flags}");
+            }
+        }
+
         lines.Add("");
         if (d.Smart is { } sm)
         {
@@ -283,7 +318,174 @@ public sealed partial class MainPage : Page
             lines.Add("(USB enclosures hide them; running as administrator may help)");
         }
 
-        DriveInfoText.Text = string.Join("\n", lines);
+        return string.Join("\n", lines);
+    }
+
+    private static TextBlock Muted(string text, double size = 12) =>
+        new() { Text = text, FontSize = size, Opacity = 0.65, TextWrapping = TextWrapping.Wrap };
+
+    private static TextBlock SectionHeader(string text) =>
+        new()
+        {
+            Text = text.ToUpperInvariant(),
+            FontSize = 11.5,
+            Opacity = 0.55,
+            CharacterSpacing = 60,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+
+    private static Grid InfoGrid(IEnumerable<(string Label, string Value)> rows)
+    {
+        var grid = new Grid { ColumnSpacing = 18, RowSpacing = 5 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 96 });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        int r = 0;
+        foreach (var (label, value) in rows)
+        {
+            grid.RowDefinitions.Add(new RowDefinition());
+            var l = Muted(label, 13);
+            var v = new TextBlock { Text = value, FontSize = 13, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            Grid.SetRow(l, r); Grid.SetColumn(l, 0);
+            Grid.SetRow(v, r); Grid.SetColumn(v, 1);
+            grid.Children.Add(l);
+            grid.Children.Add(v);
+            r++;
+        }
+        return grid;
+    }
+
+    /// <summary>The styled dialog body: header + health badge, usage bar, then grouped facts.</summary>
+    private static FrameworkElement BuildDriveInfoView(Services.DriveDetails d)
+    {
+        var green = new Microsoft.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(255, 0x0C, 0xA3, 0x0C));
+        var red = new Microsoft.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(255, 0xE6, 0x67, 0x67));
+        var root = new StackPanel { Spacing = 14, MinWidth = 420, MaxWidth = 480 };
+
+        // Header: model + kind on the left, health badge on the right.
+        var headerGrid = new Grid { ColumnSpacing = 12 };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var title = new StackPanel { Spacing = 2 };
+        title.Children.Add(new TextBlock
+        {
+            Text = d.Model ?? $"Drive {d.Root}",
+            FontSize = 17,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+        });
+        string kind = string.Join("  ·  ", new[]
+        {
+            d.MediaType,
+            d.BusType,
+            d.SpindleSpeedRpm is { } rpm ? $"{rpm:N0} rpm" : null,
+            d.PhysicalSizeBytes is { } phys ? ByteFormatter.Format(phys) : null,
+        }.Where(s => s is not null));
+        if (kind.Length > 0)
+            title.Children.Add(Muted(kind));
+        headerGrid.Children.Add(title);
+
+        bool warn = d.Smart?.CriticalWarning is not null || d.Health is "Warning" or "Unhealthy";
+        var badge = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Top };
+        badge.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 9, Height = 9, Fill = warn ? red : green, VerticalAlignment = VerticalAlignment.Center });
+        badge.Children.Add(new TextBlock
+        {
+            Text = d.Smart?.CriticalWarning ?? d.Health ?? "Unknown",
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        Grid.SetColumn(badge, 1);
+        headerGrid.Children.Add(badge);
+        root.Children.Add(headerGrid);
+
+        // Usage bar for the scanned volume.
+        long used = d.TotalBytes - d.FreeBytes;
+        double usedFrac = d.TotalBytes > 0 ? Math.Clamp((double)used / d.TotalBytes, 0.001, 1.0) : 0.001;
+        var barGrid = new Grid();
+        barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(usedFrac, GridUnitType.Star) });
+        barGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(1 - usedFrac, 0.001), GridUnitType.Star) });
+        var track = new Border
+        {
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(45, 128, 128, 128)),
+        };
+        Grid.SetColumnSpan(track, 2);
+        var fill = new Border
+        {
+            Height = 8,
+            CornerRadius = usedFrac >= 0.995 ? new CornerRadius(4) : new CornerRadius(4, 0, 0, 4),
+            Background = Application.Current.Resources.TryGetValue("AccentFillColorDefaultBrush", out object? accent)
+                ? (Microsoft.UI.Xaml.Media.Brush)accent
+                : new Microsoft.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(255, 0x39, 0x87, 0xE5)),
+        };
+        barGrid.Children.Add(track);
+        barGrid.Children.Add(fill);
+        var usage = new StackPanel { Spacing = 6 };
+        usage.Children.Add(barGrid);
+        double usedPct = d.TotalBytes > 0 ? 100.0 * used / d.TotalBytes : 0;
+        usage.Children.Add(Muted($"{d.Root}  {ByteFormatter.Format(used)} used of {ByteFormatter.Format(d.TotalBytes)} ({usedPct:F1}%)  ·  {ByteFormatter.Format(d.FreeBytes)} free"));
+        root.Children.Add(usage);
+
+        // Volume facts.
+        root.Children.Add(SectionHeader("Volume"));
+        var volumeRows = new List<(string, string)>
+        {
+            ("Volume", $"{d.Root}  {(string.IsNullOrEmpty(d.VolumeLabel) ? "(no label)" : d.VolumeLabel)}"),
+            ("Filesystem", $"{d.FileSystem}  ·  {d.ClusterSize:N0} B clusters"),
+        };
+        if (d.SerialNumber is { Length: > 0 } sn)
+            volumeRows.Add(("Serial", sn));
+        if (d.FirmwareVersion is { Length: > 0 } fw)
+            volumeRows.Add(("Firmware", fw));
+        if (d.LogicalSectorSize is { } ls && d.PhysicalSectorSize is { } ps)
+            volumeRows.Add(("Sectors", $"{ls:N0} B logical / {ps:N0} B physical"));
+        root.Children.Add(InfoGrid(volumeRows));
+
+        // Partition layout of the physical disk.
+        if (d.Partitions.Count > 0)
+        {
+            root.Children.Add(SectionHeader($"Partitions ({d.Partitions.Count})"));
+            var partRows = new List<(string, string)>();
+            foreach (var p in d.Partitions)
+            {
+                string label = p.DriveLetter is { } l ? $"#{p.Number}  {l}:" : $"#{p.Number}";
+                string name = p.VolumeLabel is { Length: > 0 } ? $"{p.VolumeLabel}  ·  " : "";
+                string fs = p.FileSystem ?? p.TypeName;
+                string free = p.FreeBytes is { } f ? $"  ·  {ByteFormatter.Format(f)} free" : "";
+                string flags = p.IsBoot ? "  ·  boot" : p.IsSystem ? "  ·  system" : "";
+                partRows.Add((label, $"{name}{fs}  ·  {ByteFormatter.Format(p.SizeBytes)}{free}{flags}"));
+            }
+            root.Children.Add(InfoGrid(partRows));
+        }
+
+        // S.M.A.R.T. counters.
+        if (d.Smart is { } sm)
+        {
+            root.Children.Add(SectionHeader($"S.M.A.R.T.  ·  {sm.Source}"));
+            var smartRows = new List<(string, string)>();
+            if (sm.TemperatureC is { } t)
+                smartRows.Add(("Temperature", $"{t} °C{(sm.TemperatureMaxC is { } tmax ? $"  (max recorded {tmax} °C)" : "")}"));
+            if (sm.WearPercent is { } w)
+                smartRows.Add(("Wear", $"{w}% used{(sm.SparePercent is { } sp ? $"  ·  spare {sp}%" : "")}"));
+            if (sm.PowerOnHours is { } h)
+                smartRows.Add(("Power-on", $"{h:N0} h  (~{h / 24:N0} days)"));
+            if (sm.PowerCycles is { } cyc)
+                smartRows.Add(("Cycles", $"{cyc:N0} power-on{(sm.UnsafeShutdowns is { } us ? $"  ·  {us:N0} unsafe shutdowns" : "")}"));
+            if (sm.DataWrittenBytes is { } dw)
+                smartRows.Add(("Lifetime I/O", $"{ByteFormatter.Format(dw)} written{(sm.DataReadBytes is { } dr ? $"  ·  {ByteFormatter.Format(dr)} read" : "")}"));
+            if (sm.MediaErrors is { } me)
+                smartRows.Add(("Media errors", me == 0 ? "none" : me.ToString("N0")));
+            root.Children.Add(InfoGrid(smartRows));
+        }
+        else
+        {
+            root.Children.Add(SectionHeader("S.M.A.R.T."));
+            root.Children.Add(Muted("Counters unavailable for this disk — USB enclosures hide them; running as administrator may help."));
+        }
+
+        return root;
     }
 
     private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)

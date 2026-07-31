@@ -20,7 +20,21 @@ public sealed record DriveDetails(
     long? PhysicalSizeBytes,
     long? LogicalSectorSize,
     long? PhysicalSectorSize,
-    SmartCounters? Smart);
+    SmartCounters? Smart,
+    IReadOnlyList<PartitionInfo> Partitions);
+
+/// <summary>One partition on the physical disk hosting the scanned volume.</summary>
+public sealed record PartitionInfo(
+    int Number,
+    char? DriveLetter,
+    long SizeBytes,
+    long OffsetBytes,
+    string TypeName,
+    bool IsBoot,
+    bool IsSystem,
+    string? VolumeLabel,
+    string? FileSystem,
+    long? FreeBytes);
 
 /// <summary>
 /// S.M.A.R.T.-derived health counters. Null record = no source could read them
@@ -73,6 +87,7 @@ public static class DriveStats
         uint? rpm = null;
         long? physicalSize = null, logicalSector = null, physicalSector = null;
         SmartCounters? smart = null;
+        var partitionList = new List<PartitionInfo>();
         try
         {
             char letter = char.ToUpperInvariant(root[0]);
@@ -142,6 +157,7 @@ public static class DriveStats
                 }
 
                 smart = NvmeHealth.Read(n) ?? ReadSmart(scope, n);
+                partitionList = ReadPartitions(scope, n);
             }
         }
         catch
@@ -153,7 +169,82 @@ public static class DriveStats
             root, drive.VolumeLabel, drive.DriveFormat,
             drive.TotalSize, drive.AvailableFreeSpace, cluster,
             model, media, bus, health, rpm,
-            serial, firmware, physicalSize, logicalSector, physicalSector, smart);
+            serial, firmware, physicalSize, logicalSector, physicalSector, smart, partitionList);
+    }
+
+    /// <summary>All partitions on the disk, in on-disk order, with volume facts for mounted ones.</summary>
+    private static List<PartitionInfo> ReadPartitions(ManagementScope scope, uint diskNumber)
+    {
+        var result = new List<PartitionInfo>();
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(scope,
+                new ObjectQuery("SELECT PartitionNumber, DriveLetter, Size, Offset, GptType, MbrType, IsBoot, IsSystem " +
+                                $"FROM MSFT_Partition WHERE DiskNumber='{diskNumber}'"));
+            foreach (ManagementObject p in searcher.Get())
+            {
+                char? letter = p["DriveLetter"] is char c && c != '\0' ? char.ToUpperInvariant(c) : null;
+                string type = PartitionTypeName(p["GptType"] as string, ToInt(p["MbrType"]));
+
+                string? label = null, fs = null;
+                long? free = null;
+                if (letter is { } l)
+                {
+                    try
+                    {
+                        var vol = new DriveInfo($"{l}:\\");
+                        if (vol.IsReady)
+                        {
+                            label = vol.VolumeLabel;
+                            fs = vol.DriveFormat;
+                            free = vol.AvailableFreeSpace;
+                        }
+                    }
+                    catch { }
+                }
+
+                result.Add(new PartitionInfo(
+                    ToInt(p["PartitionNumber"]) ?? 0, letter,
+                    ToLong(p["Size"]) ?? 0, ToLong(p["Offset"]) ?? 0,
+                    type,
+                    p["IsBoot"] as bool? ?? false,
+                    p["IsSystem"] as bool? ?? false,
+                    label, fs, free));
+            }
+        }
+        catch
+        {
+        }
+        return [.. result.OrderBy(p => p.OffsetBytes)];
+    }
+
+    private static string PartitionTypeName(string? gptType, int? mbrType)
+    {
+        if (gptType is not null)
+        {
+            return gptType.Trim('{', '}').ToLowerInvariant() switch
+            {
+                "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" => "EFI System",
+                "e3c9e316-0b5c-4db8-817d-f92df00215ae" => "Microsoft Reserved",
+                "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7" => "Basic data",
+                "de94bba4-06d1-4d40-a16a-bfd50179d6ac" => "Recovery",
+                "5808c8aa-7e8f-42e0-85d2-e1e90434cfb3" => "LDM metadata",
+                "af9b60a0-1431-4f62-bc68-3311714a69ad" => "LDM data",
+                "0fc63daf-8483-4772-8e79-3d69d8477de4" => "Linux filesystem",
+                _ => "GPT partition",
+            };
+        }
+        return mbrType switch
+        {
+            7 => "NTFS/exFAT",
+            11 or 12 => "FAT32",
+            14 => "FAT16",
+            0x27 => "Recovery",
+            0x82 => "Linux swap",
+            0x83 => "Linux",
+            null => "Partition",
+            _ => $"MBR type {mbrType}",
+        };
     }
 
     /// <summary>

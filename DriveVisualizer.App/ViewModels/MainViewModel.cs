@@ -290,6 +290,14 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedRowChanged(NodeRow? value) =>
         SelectionText = value is null ? "" : $"{value.Node.GetFullPath()}  —  {value.SizeText}";
 
+    /// <summary>
+    /// Cancels the running scan. Deliberately a separate synchronous command:
+    /// ScanOrStopCommand is an AsyncRelayCommand, which reports CanExecute=false
+    /// while its own Task is in flight — so it can never be used to stop itself.
+    /// </summary>
+    [RelayCommand]
+    private void StopScan() => _cts?.Cancel();
+
     [RelayCommand]
     private async Task ScanOrStopAsync()
     {

@@ -67,7 +67,7 @@
                             IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
                 </AppBarElementContainer>
                 <AppBarButton x:Name="StopButton" Label="Stop"
-                              Command="{x:Bind ViewModel.ScanOrStopCommand}"
+                              Command="{x:Bind ViewModel.StopScanCommand}"
                               IsEnabled="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
                               ToolTipService.ToolTip="Stop the scan and keep the partial results">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE71A;" /></AppBarButton.Icon>

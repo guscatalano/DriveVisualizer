@@ -86,7 +86,19 @@ public sealed partial class MainPage : Page
             item.Click += (_, _) => ViewModel.SetCategoryEnabled(captured, item.IsChecked);
             filterMenu.Items.Add(item);
         }
+        filterMenu.Items.Add(new Microsoft.UI.Xaml.Controls.MenuFlyoutSeparator());
+        var cleanupItem = new Microsoft.UI.Xaml.Controls.ToggleMenuFlyoutItem { Text = "Cleanup candidates only" };
+        cleanupItem.Click += (_, _) =>
+        {
+            ViewModel.CleanupCandidatesOnly = cleanupItem.IsChecked;
+            TreemapCanvas.Invalidate();
+        };
+        filterMenu.Items.Add(cleanupItem);
         FilterButton.Flyout = filterMenu;
+        WatchIcon.Glyph = ""; // eye
+
+        Services.Mcp.McpHttpServer.Instance.StatusChanged += () => DispatcherQueue.TryEnqueue(RefreshMcpDot);
+        RefreshMcpDot();
 
         // Restore persisted settings without letting the change handlers re-save them.
         _settingsLoading = true;
@@ -488,10 +500,27 @@ public sealed partial class MainPage : Page
         return root;
     }
 
-    private void CleanupCheckBox_Toggled(object sender, RoutedEventArgs e)
+    private void WatchToggle_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.WatchForChanges = WatchToggle.IsChecked == true;
+
+    private void McpToggle_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.CleanupCandidatesOnly = CleanupCheckBox.IsChecked == true;
-        TreemapCanvas.Invalidate();
+        Services.AppSettings.McpEnabled = McpToggle.IsChecked == true;
+        Services.Mcp.McpHttpServer.Instance.ApplyEnabledSetting();
+        RefreshMcpDot();
+    }
+
+    private void RefreshMcpDot()
+    {
+        var server = Services.Mcp.McpHttpServer.Instance;
+        bool running = server.IsRunning;
+        McpStatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(running
+            ? Color.FromArgb(0xFF, 0x2E, 0xA0, 0x43)    // green — listening
+            : Color.FromArgb(0xFF, 0x9E, 0x9E, 0x9E));  // gray — off
+        McpToggle.IsChecked = running;
+        ToolTipService.SetToolTip(McpToggle, running
+            ? $"In-app MCP server — listening on http://localhost:{server.Port}/ (read-only tools; configs in Settings)"
+            : "In-app MCP server — lets an AI agent scan, read history, and check drive health (read-only). Click to start; configs in Settings.");
     }
 
 
@@ -808,9 +837,6 @@ public sealed partial class MainPage : Page
         if (RowFrom(sender)?.Node is { } node && node.IsDirectory)
             await ViewModel.RefreshFolderAsync(node);
     }
-
-    private void WatchCheckBox_Toggled(object sender, RoutedEventArgs e) =>
-        ViewModel.WatchForChanges = WatchCheckBox.IsChecked == true;
 
     private void Menu_Open(object sender, RoutedEventArgs e)
     {

@@ -175,4 +175,17 @@ public static class AppSettings
         get => GetInt(nameof(SizeDetail), 0);
         set => SetInt(nameof(SizeDetail), value);
     }
+
+    /// <summary>Whether the embedded MCP server starts with the app.</summary>
+    public static bool McpEnabled
+    {
+        get => GetBool(nameof(McpEnabled), false);
+        set => SetBool(nameof(McpEnabled), value);
+    }
+
+    public static int McpPort
+    {
+        get => GetInt(nameof(McpPort), 18766);
+        set => SetInt(nameof(McpPort), value);
+    }
 }

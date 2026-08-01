@@ -73,6 +73,11 @@
                 MinWidth="80"
                 Content="{x:Bind ViewModel.ScanButtonText, Mode=OneWay}"
                 Command="{x:Bind ViewModel.ScanOrStopCommand}" />
+            <ToggleButton x:Name="WatchToggle" Click="WatchToggle_Click" Padding="8,5" MinHeight="32"
+                          AutomationProperties.Name="Watch for changes"
+                          ToolTipService.ToolTip="Watch for changes — auto-refresh scanned folders when files change on disk">
+                <FontIcon x:Name="WatchIcon" FontSize="14" />
+            </ToggleButton>
             <ProgressRing
                 Width="20" Height="20"
                 IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
@@ -117,27 +122,21 @@
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
-            <CheckBox
-                x:Name="CleanupCheckBox"
-                Content="Cleanup candidates"
-                MinWidth="0"
-                VerticalAlignment="Center"
-                Checked="CleanupCheckBox_Toggled"
-                Unchecked="CleanupCheckBox_Toggled"
-                ToolTipService.ToolTip="Show only files that look safe to review for deletion: temp folders, caches, logs, recycle bin, node_modules" />
-            <CheckBox
-                x:Name="WatchCheckBox"
-                Content="Watch"
-                MinWidth="0"
-                VerticalAlignment="Center"
-                Checked="WatchCheckBox_Toggled"
-                Unchecked="WatchCheckBox_Toggled"
-                ToolTipService.ToolTip="Auto-refresh folders when files change on disk" />
         </StackPanel>
-            <Button x:Name="SettingsButton" Grid.Column="1" Padding="9,6" VerticalAlignment="Center" HorizontalAlignment="Right"
-                    Click="Settings_Click" ToolTipService.ToolTip="Settings">
-                <FontIcon x:Name="SettingsIcon" FontSize="15" />
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <ToggleButton x:Name="McpToggle" Click="McpToggle_Click" Padding="8,5" MinHeight="32"
+                              AutomationProperties.Name="AI agent (MCP)"
+                              ToolTipService.ToolTip="In-app MCP server — lets an AI agent scan, read history, and check drive health (read-only)">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Ellipse x:Name="McpStatusDot" Width="9" Height="9" Fill="Gray" />
+                        <TextBlock Text="AI agent (MCP)" FontSize="13" />
+                    </StackPanel>
+                </ToggleButton>
+                <Button x:Name="SettingsButton" Padding="9,6" VerticalAlignment="Center"
+                        Click="Settings_Click" ToolTipService.ToolTip="Settings">
+                    <FontIcon x:Name="SettingsIcon" FontSize="15" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Column headers (widths mirror the item template below) -->

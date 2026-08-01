@@ -41,6 +41,7 @@ public sealed partial class SettingsPage : Page
             version = "dev";
         }
         AboutTitle.Text = $"DriveVisualizer {version}";
+        McpPortBox.Value = Services.AppSettings.McpPort;
         ReflectMcpState();
         RefreshMcpConfigs();
         _loading = false;
@@ -52,8 +53,9 @@ public sealed partial class SettingsPage : Page
         {
             int port = (int)McpPortBox.Value;
             Services.Mcp.McpHttpServer.Instance.Start(port);
+            Services.AppSettings.McpEnabled = true;
             ReflectMcpState();
-            ShowMcpStatus($"MCP server running on http://localhost:{port}/ — stays up until you stop it or close the app.", InfoBarSeverity.Success);
+            ShowMcpStatus($"MCP server running on http://localhost:{port}/ — starts with the app until you turn it off.", InfoBarSeverity.Success);
         }
         catch (Exception ex)
         {
@@ -64,12 +66,17 @@ public sealed partial class SettingsPage : Page
     private void McpStop_Click(object sender, RoutedEventArgs e)
     {
         Services.Mcp.McpHttpServer.Instance.Stop();
+        Services.AppSettings.McpEnabled = false;
         ReflectMcpState();
         ShowMcpStatus("Stopped.", InfoBarSeverity.Informational);
     }
 
-    private void McpPort_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args) =>
+    private void McpPort_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_loading && !double.IsNaN(McpPortBox.Value))
+            Services.AppSettings.McpPort = (int)McpPortBox.Value;
         RefreshMcpConfigs();
+    }
 
     private void ReflectMcpState()
     {

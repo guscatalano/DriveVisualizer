@@ -27,6 +27,9 @@ public sealed class McpHttpServer
     public bool IsRunning => _listener?.IsListening == true;
     public int? Port { get; private set; }
 
+    /// <summary>Raised (on a worker thread) whenever the server starts or stops.</summary>
+    public event Action? StatusChanged;
+
     public void Start(int port)
     {
         if (IsRunning)
@@ -38,6 +41,7 @@ public sealed class McpHttpServer
         _cts = new CancellationTokenSource();
         Port = port;
         _ = Task.Run(() => AcceptLoopAsync(listener, _cts.Token));
+        StatusChanged?.Invoke();
     }
 
     public void Stop()
@@ -52,6 +56,21 @@ public sealed class McpHttpServer
         _listener = null;
         _cts = null;
         Port = null;
+        StatusChanged?.Invoke();
+    }
+
+    /// <summary>Applies the persisted on/off setting; swallows bind failures (port in use).</summary>
+    public void ApplyEnabledSetting()
+    {
+        bool wanted = AppSettings.McpEnabled;
+        if (wanted && !IsRunning)
+        {
+            try { Start(AppSettings.McpPort); } catch { }
+        }
+        else if (!wanted && IsRunning)
+        {
+            Stop();
+        }
     }
 
     private static async Task AcceptLoopAsync(HttpListener listener, CancellationToken ct)

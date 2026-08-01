@@ -80,6 +80,7 @@ public partial class App : Application
         _window = new MainWindow();
         Window = _window;
         SettingsPage.ApplyTheme(Services.AppSettings.Theme);
+        Services.Mcp.McpHttpServer.Instance.ApplyEnabledSetting(); // resume MCP server if it was on
         _window.Activate();
     }
 

@@ -55,6 +55,25 @@ dotnet tool install --global wix --version 5.0.2
 wix build installer\Package.wxs -d "PublishDir=$PWD\artifacts\publish" -arch x64 -o artifacts\msi\DriveVisualizer.msi
 ```
 
+## MCP server
+
+`Settings → MCP server` starts an HTTP MCP server **inside** the app via `HttpListener`
+(same embedded pattern as FindNeedle and BinaryExplorer). AI clients — Claude Code,
+VS Code Copilot, anything MCP — get read-only tools wired straight to the engine:
+
+| Tool | What it does |
+|---|---|
+| `scan_folder` | Scan any folder/drive: totals, categories, largest folders & files |
+| `get_current_scan` | Instant summary of the scan open in the app window |
+| `list_snapshot_targets` / `get_history` | Browse the saved snapshot history |
+| `diff_snapshots` | What grew/shrank between any two snapshots, folder- and file-level |
+| `drive_info` | Model, bus, partitions, S.M.A.R.T. health |
+| `find_cleanup_candidates` | Largest temp/cache/log/node_modules items |
+
+Copy-paste client configs (Claude Code, VS Code, curl) are in the Settings card.
+Nothing can delete or modify files, and the server binds to `localhost` only — but it
+has **no authentication**, so start it when you need it and stop it when you're done.
+
 ## Architecture
 
 | Project | What it is |

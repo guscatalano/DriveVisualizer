@@ -122,6 +122,24 @@ public sealed class SnapshotTests
     }
 
     [Fact]
+    public void DirMoversReportGrowthShrinkageAndRemovals()
+    {
+        var oldRoot = BuildSampleTree();
+        var before = ScanSnapshot.Build(oldRoot, @"C:\scan", DateTime.UtcNow.AddDays(-1));
+
+        var newRoot = Dir(@"C:\scan", null);
+        var videos = Dir("videos", newRoot);
+        var big = File("movie.mp4", videos, 9000); // grew from 5000
+        newRoot.Children = [videos];
+        videos.Children = [big];
+        var after = ScanSnapshot.Build(newRoot, @"C:\scan", DateTime.UtcNow);
+
+        var movers = HistoryChart.ComputeDirMovers(before, after, 10);
+        Assert.Contains(movers, m => m.Path.EndsWith("videos", StringComparison.OrdinalIgnoreCase) && m.Delta == 4000);
+        Assert.DoesNotContain(movers, m => m.Delta == 0);
+    }
+
+    [Fact]
     public void SnapshotsWithoutDriveHealthStillLoadAndReport()
     {
         var root = BuildSampleTree();

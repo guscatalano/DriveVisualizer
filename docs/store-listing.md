@@ -90,6 +90,7 @@ github.com/guscatalano/DriveVisualizer.
 - Junction-safe, long-path-safe, allocated-size accurate — no double counting
 - Exportable HTML reports and shareable snapshot files, dark/light aware
 - Light and dark themes, adjustable layouts, no ads, no telemetry, open source
+- Built-in MCP server (opt-in) lets AI assistants query scans, history, and drive health
 
 ## Search terms (max 7)
 

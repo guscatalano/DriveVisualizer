@@ -253,8 +253,12 @@ public partial class MainViewModel : ObservableObject
     public string ScanButtonText => IsScanning ? "Stop" : "Scan";
     public bool IsNotScanning => !IsScanning;
 
+    /// <summary>The app's single live instance, so the embedded MCP server can see the current scan.</summary>
+    public static MainViewModel? Current { get; private set; }
+
     public MainViewModel(DispatcherQueue dispatcher)
     {
+        Current = this;
         Rows = [];
         Categories = [];
         StatusText = "Pick a drive or folder and press Scan.";

@@ -263,34 +263,11 @@ public static class HistoryChart
             var after = ordered[i];
             long totalDelta = after.TotalAllocated - before.TotalAllocated;
 
-            var beforePaths = before.BuildDirectoryPaths();
-            var beforeByPath = new Dictionary<string, long>(before.Directories.Count, StringComparer.OrdinalIgnoreCase);
-            for (int d = 0; d < before.Directories.Count; d++)
-                beforeByPath[beforePaths[d]] = before.Directories[d].AllocatedSize;
-
-            var afterPaths = after.BuildDirectoryPaths();
-            var deltas = new List<(string Path, long Delta)>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int d = 0; d < after.Directories.Count; d++)
-            {
-                seen.Add(afterPaths[d]);
-                long deltaBytes = after.Directories[d].AllocatedSize -
-                    (beforeByPath.TryGetValue(afterPaths[d], out long b) ? b : 0);
-                if (deltaBytes != 0)
-                    deltas.Add((afterPaths[d], deltaBytes));
-            }
-            for (int d = 0; d < before.Directories.Count; d++)
-                if (!seen.Contains(beforePaths[d]) && before.Directories[d].AllocatedSize > 0)
-                    deltas.Add((beforePaths[d] + "  (removed)", -before.Directories[d].AllocatedSize));
-
             string totalText = totalDelta == 0 ? "no net change"
                 : $"<span class=\"{(totalDelta > 0 ? "pos" : "neg")}\">{(totalDelta > 0 ? "+" : "−")}{ByteFormatter.Format(Math.Abs(totalDelta))}</span>";
             sb.Append($"<h3 style=\"font-size:13px;margin:16px 0 4px\" class=\"muted\">{before.TimestampUtc.ToLocalTime().ToString(headingFormat)} → {after.TimestampUtc.ToLocalTime().ToString(headingFormat)} · {totalText}</h3>");
 
-            var movers = deltas
-                .OrderByDescending(x => Math.Abs(x.Delta))
-                .Take(6)
-                .ToList();
+            var movers = ComputeDirMovers(before, after, 6);
             var fileMovers = ComputeFileMovers(before, after, 6);
 
             if (movers.Count == 0 && fileMovers.Count == 0)
@@ -308,6 +285,32 @@ public static class HistoryChart
             sb.Append("</tbody></table>");
         }
         sb.Append("<div class=\"muted\" style=\"font-size:12px;margin-top:6px\">📄 File changes are tracked among each snapshot's largest files; a file listed as removed may also have shrunk out of that set.</div>");
+    }
+
+    /// <summary>Biggest folder-size changes between two snapshots; removed folders count fully negative.</summary>
+    public static List<(string Path, long Delta)> ComputeDirMovers(ScanSnapshot before, ScanSnapshot after, int take)
+    {
+        var beforePaths = before.BuildDirectoryPaths();
+        var beforeByPath = new Dictionary<string, long>(before.Directories.Count, StringComparer.OrdinalIgnoreCase);
+        for (int d = 0; d < before.Directories.Count; d++)
+            beforeByPath[beforePaths[d]] = before.Directories[d].AllocatedSize;
+
+        var afterPaths = after.BuildDirectoryPaths();
+        var deltas = new List<(string Path, long Delta)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int d = 0; d < after.Directories.Count; d++)
+        {
+            seen.Add(afterPaths[d]);
+            long deltaBytes = after.Directories[d].AllocatedSize -
+                (beforeByPath.TryGetValue(afterPaths[d], out long b) ? b : 0);
+            if (deltaBytes != 0)
+                deltas.Add((afterPaths[d], deltaBytes));
+        }
+        for (int d = 0; d < before.Directories.Count; d++)
+            if (!seen.Contains(beforePaths[d]) && before.Directories[d].AllocatedSize > 0)
+                deltas.Add((beforePaths[d] + "  (removed)", -before.Directories[d].AllocatedSize));
+
+        return deltas.OrderByDescending(x => Math.Abs(x.Delta)).Take(take).ToList();
     }
 
     /// <summary>Biggest individual file changes between two snapshots' top-file lists.</summary>

@@ -41,7 +41,97 @@ public sealed partial class SettingsPage : Page
             version = "dev";
         }
         AboutTitle.Text = $"DriveVisualizer {version}";
+        ReflectMcpState();
+        RefreshMcpConfigs();
         _loading = false;
+    }
+
+    private void McpStart_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            int port = (int)McpPortBox.Value;
+            Services.Mcp.McpHttpServer.Instance.Start(port);
+            ReflectMcpState();
+            ShowMcpStatus($"MCP server running on http://localhost:{port}/ — stays up until you stop it or close the app.", InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            ShowMcpStatus("Failed to start: " + ex.Message, InfoBarSeverity.Error);
+        }
+    }
+
+    private void McpStop_Click(object sender, RoutedEventArgs e)
+    {
+        Services.Mcp.McpHttpServer.Instance.Stop();
+        ReflectMcpState();
+        ShowMcpStatus("Stopped.", InfoBarSeverity.Informational);
+    }
+
+    private void McpPort_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args) =>
+        RefreshMcpConfigs();
+
+    private void ReflectMcpState()
+    {
+        bool running = Services.Mcp.McpHttpServer.Instance.IsRunning;
+        McpStartButton.IsEnabled = !running;
+        McpStopButton.IsEnabled = running;
+        McpPortBox.IsEnabled = !running;
+        McpStatusLabel.Text = running && Services.Mcp.McpHttpServer.Instance.Port is int p
+            ? $"listening on :{p}"
+            : "stopped";
+        if (running && Services.Mcp.McpHttpServer.Instance.Port is int current)
+            McpPortBox.Value = current;
+    }
+
+    private void RefreshMcpConfigs()
+    {
+        if (CfgClaudeCodeBox is null)
+            return; // fires during InitializeComponent before siblings exist
+        int port = double.IsNaN(McpPortBox.Value) ? 18766 : (int)McpPortBox.Value;
+        string url = $"http://localhost:{port}/";
+
+        CfgClaudeCodeBox.Text = $"claude mcp add --transport http drivevisualizer {url}";
+
+        CfgVsCodeBox.Text =
+            "{\r\n" +
+            "  \"servers\": {\r\n" +
+            "    \"drivevisualizer\": {\r\n" +
+            "      \"type\": \"http\",\r\n" +
+            $"      \"url\": \"{url}\"\r\n" +
+            "    }\r\n" +
+            "  }\r\n" +
+            "}";
+
+        CfgCurlBox.Text =
+            $"curl -s {url}tools\r\n" +
+            $"curl -s {url} -H \"Content-Type: application/json\" -d '{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}}'";
+    }
+
+    private void McpCopyConfig_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string key)
+            return;
+        TextBox? box = key switch
+        {
+            "ClaudeCode" => CfgClaudeCodeBox,
+            "VsCode" => CfgVsCodeBox,
+            "Curl" => CfgCurlBox,
+            _ => null,
+        };
+        if (box is null || string.IsNullOrEmpty(box.Text))
+            return;
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(box.Text);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        ShowMcpStatus("Copied.", InfoBarSeverity.Success);
+    }
+
+    private void ShowMcpStatus(string message, InfoBarSeverity severity)
+    {
+        McpStatusBar.Severity = severity;
+        McpStatusBar.Message = message;
+        McpStatusBar.IsOpen = true;
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)

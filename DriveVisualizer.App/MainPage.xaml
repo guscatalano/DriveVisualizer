@@ -62,16 +62,11 @@
                         HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0"
                         IsOpen="False" IsSticky="False">
                 <AppBarElementContainer VerticalContentAlignment="Center">
-                    <Button Style="{StaticResource AccentButtonStyle}" MinWidth="76" Content="Scan" Margin="4,0,2,0"
-                            Command="{x:Bind ViewModel.ScanOrStopCommand}"
-                            IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
+                    <Button Style="{StaticResource AccentButtonStyle}" MinWidth="76" Margin="4,0,2,0"
+                            Content="{x:Bind ViewModel.ScanButtonText, Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ToggleScanCommand}"
+                            ToolTipService.ToolTip="Scan the selected target; while scanning, stops and keeps the partial results" />
                 </AppBarElementContainer>
-                <AppBarButton x:Name="StopButton" Label="Stop"
-                              Command="{x:Bind ViewModel.StopScanCommand}"
-                              IsEnabled="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
-                              ToolTipService.ToolTip="Stop the scan and keep the partial results">
-                    <AppBarButton.Icon><FontIcon Glyph="&#xE71A;" /></AppBarButton.Icon>
-                </AppBarButton>
                 <AppBarElementContainer VerticalContentAlignment="Center">
                     <ProgressRing Width="20" Height="20" Margin="0,0,2,0" IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
                 </AppBarElementContainer>

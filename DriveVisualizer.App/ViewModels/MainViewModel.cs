@@ -291,12 +291,18 @@ public partial class MainViewModel : ObservableObject
         SelectionText = value is null ? "" : $"{value.Node.GetFullPath()}  —  {value.SizeText}";
 
     /// <summary>
-    /// Cancels the running scan. Deliberately a separate synchronous command:
-    /// ScanOrStopCommand is an AsyncRelayCommand, which reports CanExecute=false
-    /// while its own Task is in flight — so it can never be used to stop itself.
+    /// The Scan/Stop button's command. Deliberately synchronous: ScanOrStopCommand
+    /// is an AsyncRelayCommand, which reports CanExecute=false while its own Task
+    /// is in flight — bound directly, it can never be used to stop itself.
     /// </summary>
     [RelayCommand]
-    private void StopScan() => _cts?.Cancel();
+    private void ToggleScan()
+    {
+        if (IsScanning)
+            _cts?.Cancel();
+        else
+            ScanOrStopCommand.Execute(null);
+    }
 
     [RelayCommand]
     private async Task ScanOrStopAsync()

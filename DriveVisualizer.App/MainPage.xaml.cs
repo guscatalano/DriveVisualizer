@@ -68,11 +68,9 @@ public sealed partial class MainPage : Page
         InitializeComponent();
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
 
-        DriveInfoIcon.Glyph = "";
         ZoomInIcon.Glyph = "";
         ZoomOutSmallIcon.Glyph = "";
         ZoomOutIcon.Glyph = "";        // back arrow
-        LayoutToggleIcon.Glyph = "";   // dock bottom
 
         // Category filter flyout, one toggle per legend color.
         var filterMenu = new Microsoft.UI.Xaml.Controls.MenuFlyout
@@ -95,10 +93,12 @@ public sealed partial class MainPage : Page
         };
         filterMenu.Items.Add(cleanupItem);
         FilterButton.Flyout = filterMenu;
-        WatchIcon.Glyph = ""; // eye
 
         Services.Mcp.McpHttpServer.Instance.StatusChanged += () => DispatcherQueue.TryEnqueue(RefreshMcpDot);
         RefreshMcpDot();
+
+        if (!ViewModel.Targets.Contains(BrowseSentinel))
+            ViewModel.Targets.Add(BrowseSentinel); // always the last row of the target dropdown
 
         // Restore persisted settings without letting the change handlers re-save them.
         _settingsLoading = true;
@@ -109,6 +109,7 @@ public sealed partial class MainPage : Page
         _sideBySide = Services.AppSettings.SideBySideLayout;
         if (_sideBySide)
             ApplyLayout();
+        UpdateLayoutChecks();
         _settingsLoading = false;
 
         _resizeTimer = DispatcherQueue.CreateTimer();
@@ -177,7 +178,25 @@ public sealed partial class MainPage : Page
 
     // ---------- Toolbar ----------
 
-    private async void Browse_Click(object sender, RoutedEventArgs e)
+    /// <summary>Sentinel row at the bottom of the target dropdown that opens the folder picker.</summary>
+    public const string BrowseSentinel = "Select a folder…";
+
+    private string? _lastRealTarget;
+
+    private void TargetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ViewModel.SelectedTarget == BrowseSentinel)
+        {
+            ViewModel.SelectedTarget = _lastRealTarget; // revert while the picker is up
+            _ = PickFolderAsync();
+        }
+        else if (ViewModel.SelectedTarget is not null)
+        {
+            _lastRealTarget = ViewModel.SelectedTarget;
+        }
+    }
+
+    private async Task PickFolderAsync()
     {
         try
         {
@@ -187,7 +206,7 @@ public sealed partial class MainPage : Page
                 return;
 
             if (!ViewModel.Targets.Contains(result.Path))
-                ViewModel.Targets.Add(result.Path);
+                ViewModel.Targets.Insert(ViewModel.Targets.Count - 1, result.Path); // keep the sentinel last
             ViewModel.SelectedTarget = result.Path;
         }
         catch (Exception ex)
@@ -211,7 +230,7 @@ public sealed partial class MainPage : Page
 
     private void UpdateViewButton()
     {
-        ViewButton.Content = _vizMode.ToString();
+        ViewButton.Label = _vizMode.ToString();
         ViewTreemapItem.IsChecked = _vizMode == VizMode.Treemap;
         ViewSunburstItem.IsChecked = _vizMode == VizMode.Sunburst;
         ViewIcicleItem.IsChecked = _vizMode == VizMode.Icicle;
@@ -219,12 +238,23 @@ public sealed partial class MainPage : Page
 
     // ---------- Layout: bottom / side-by-side ----------
 
-    private void LayoutToggle_Click(object sender, RoutedEventArgs e)
+    private void LayoutMode_Click(object sender, RoutedEventArgs e)
     {
-        _sideBySide = !_sideBySide;
-        Services.AppSettings.SideBySideLayout = _sideBySide;
-        ApplyLayout();
-        RecomputeTreemap();
+        bool beside = ReferenceEquals(sender, LayoutBesideItem);
+        if (beside != _sideBySide)
+        {
+            _sideBySide = beside;
+            Services.AppSettings.SideBySideLayout = _sideBySide;
+            ApplyLayout();
+            RecomputeTreemap();
+        }
+        UpdateLayoutChecks();
+    }
+
+    private void UpdateLayoutChecks()
+    {
+        LayoutBelowItem.IsChecked = !_sideBySide;
+        LayoutBesideItem.IsChecked = _sideBySide;
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>
@@ -532,8 +562,6 @@ public sealed partial class MainPage : Page
 
         if (!_sideBySide)
         {
-            LayoutToggleText.Text = "Map below";
-            LayoutToggleIcon.Glyph = ""; // dock bottom
 
             rows[2].Height = new GridLength(2, GridUnitType.Star);
             rows[2].MinHeight = 120;
@@ -566,8 +594,6 @@ public sealed partial class MainPage : Page
         }
         else
         {
-            LayoutToggleText.Text = "Map right";
-            LayoutToggleIcon.Glyph = ""; // dock right
 
             rows[2].Height = new GridLength(1, GridUnitType.Star);
             rows[2].MinHeight = 120;

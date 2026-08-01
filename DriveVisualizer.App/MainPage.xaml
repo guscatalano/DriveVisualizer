@@ -48,82 +48,91 @@
         <!-- Toolbar -->
         <Grid x:Name="ToolbarPanel" Grid.Row="0" Grid.ColumnSpan="3" Margin="0,4,0,8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-            <ComboBox
-                MinWidth="220"
+            <ComboBox x:Name="TargetCombo"
+                MinWidth="220" VerticalAlignment="Center"
                 IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.Targets}"
-                SelectedItem="{x:Bind ViewModel.SelectedTarget, Mode=TwoWay}" />
-            <Button
-                Content="Browse…"
-                Click="Browse_Click"
-                IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
-            <Button x:Name="DriveInfoButton" Click="DriveInfo_Click"
-                    ToolTipService.ToolTip="Model, partitions, capacity, and S.M.A.R.T. health for the drive behind the current target">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon x:Name="DriveInfoIcon" FontSize="14" VerticalAlignment="Center" />
-                    <TextBlock Text="Drive info" />
-                </StackPanel>
-            </Button>
-            <Button
-                Style="{StaticResource AccentButtonStyle}"
-                MinWidth="80"
-                Content="{x:Bind ViewModel.ScanButtonText, Mode=OneWay}"
-                Command="{x:Bind ViewModel.ScanOrStopCommand}" />
-            <ToggleButton x:Name="WatchToggle" Click="WatchToggle_Click" Padding="8,5" MinHeight="32"
-                          AutomationProperties.Name="Watch for changes"
-                          ToolTipService.ToolTip="Watch for changes — auto-refresh scanned folders when files change on disk">
-                <FontIcon x:Name="WatchIcon" FontSize="14" />
-            </ToggleButton>
-            <ProgressRing
-                Width="20" Height="20"
-                IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
-            <AppBarSeparator />
-            <DropDownButton x:Name="ViewButton" Content="Treemap">
-                <DropDownButton.Flyout>
-                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <ToggleMenuFlyoutItem x:Name="ViewTreemapItem" Text="Treemap" Tag="0" Click="ViewMode_Click" />
-                        <ToggleMenuFlyoutItem x:Name="ViewSunburstItem" Text="Sunburst" Tag="1" Click="ViewMode_Click" />
-                        <ToggleMenuFlyoutItem x:Name="ViewIcicleItem" Text="Icicle" Tag="2" Click="ViewMode_Click" />
-                    </MenuFlyout>
-                </DropDownButton.Flyout>
-            </DropDownButton>
-            <Button x:Name="LayoutToggleButton" Click="LayoutToggle_Click">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon x:Name="LayoutToggleIcon" Glyph="" FontSize="14" />
-                    <TextBlock x:Name="LayoutToggleText" Text="Map below" />
-                </StackPanel>
-            </Button>
-            <Button Content="Columns">
-                <Button.Flyout>
-                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <ToggleMenuFlyoutItem Text="% of parent" IsChecked="{x:Bind ViewModel.Prefs.ShowPercent, Mode=TwoWay}" />
-                        <ToggleMenuFlyoutItem Text="Size" IsChecked="{x:Bind ViewModel.Prefs.ShowSize, Mode=TwoWay}" />
-                        <ToggleMenuFlyoutItem Text="Change" IsChecked="{x:Bind ViewModel.Prefs.ShowChange, Mode=TwoWay}" />
-                        <ToggleMenuFlyoutItem Text="Files" IsChecked="{x:Bind ViewModel.Prefs.ShowFiles, Mode=TwoWay}" />
-                        <ToggleMenuFlyoutItem Text="Modified" IsChecked="{x:Bind ViewModel.Prefs.ShowModified, Mode=TwoWay}" />
-                    </MenuFlyout>
-                </Button.Flyout>
-            </Button>
-            <Button x:Name="FilterButton" Content="Filter" />
-            <DropDownButton Content="Report">
-                <DropDownButton.Flyout>
-                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                        <MenuFlyoutItem Text="What changed since last scan" Click="Report_Diff" />
-                        <MenuFlyoutItem Text="Size history…" Click="Report_History" />
-                        <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Export HTML report…" Click="Report_Export" />
-                        <MenuFlyoutItem Text="Compare with a snapshot file…" Click="Report_Compare" />
-                        <MenuFlyoutSeparator />
-                        <MenuFlyoutItem Text="Save snapshot as…" Click="Report_SaveSnapshot" />
-                    </MenuFlyout>
-                </DropDownButton.Flyout>
-            </DropDownButton>
-        </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" HorizontalAlignment="Right">
+                SelectedItem="{x:Bind ViewModel.SelectedTarget, Mode=TwoWay}"
+                SelectionChanged="TargetCombo_SelectionChanged" />
+            <CommandBar Grid.Column="1" DefaultLabelPosition="Right" Background="Transparent"
+                        HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0"
+                        IsOpen="False" IsSticky="False">
+                <AppBarElementContainer VerticalContentAlignment="Center">
+                    <Button Style="{StaticResource AccentButtonStyle}" MinWidth="76" Content="Scan" Margin="4,0,2,0"
+                            Command="{x:Bind ViewModel.ScanOrStopCommand}"
+                            IsEnabled="{x:Bind ViewModel.IsNotScanning, Mode=OneWay}" />
+                </AppBarElementContainer>
+                <AppBarButton x:Name="StopButton" Label="Stop"
+                              Command="{x:Bind ViewModel.ScanOrStopCommand}"
+                              IsEnabled="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
+                              ToolTipService.ToolTip="Stop the scan and keep the partial results">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE71A;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarElementContainer VerticalContentAlignment="Center">
+                    <ProgressRing Width="20" Height="20" Margin="0,0,2,0" IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}" />
+                </AppBarElementContainer>
+                <AppBarButton x:Name="DriveInfoButton" Label="Drive info" Click="DriveInfo_Click"
+                              ToolTipService.ToolTip="Model, partitions, capacity, and S.M.A.R.T. health for the drive behind the current target">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xEDA2;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarSeparator />
+                <AppBarButton x:Name="ViewButton" Label="Treemap"
+                              ToolTipService.ToolTip="Visualization style">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xF0E2;" /></AppBarButton.Icon>
+                    <AppBarButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <ToggleMenuFlyoutItem x:Name="ViewTreemapItem" Text="Treemap" Tag="0" Click="ViewMode_Click" />
+                            <ToggleMenuFlyoutItem x:Name="ViewSunburstItem" Text="Sunburst" Tag="1" Click="ViewMode_Click" />
+                            <ToggleMenuFlyoutItem x:Name="ViewIcicleItem" Text="Icicle" Tag="2" Click="ViewMode_Click" />
+                            <MenuFlyoutSeparator />
+                            <ToggleMenuFlyoutItem x:Name="LayoutBelowItem" Text="Map below" Click="LayoutMode_Click" />
+                            <ToggleMenuFlyoutItem x:Name="LayoutBesideItem" Text="Map beside" Click="LayoutMode_Click" />
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarButton x:Name="FilterButton" Label="Filter"
+                              ToolTipService.ToolTip="Show or hide categories; cleanup-candidates-only mode">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE71C;" /></AppBarButton.Icon>
+                </AppBarButton>
+                <AppBarButton Label="Report">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE9F9;" /></AppBarButton.Icon>
+                    <AppBarButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuFlyoutItem Text="What changed since last scan" Click="Report_Diff" />
+                            <MenuFlyoutItem Text="Size history…" Click="Report_History" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Export HTML report…" Click="Report_Export" />
+                            <MenuFlyoutItem Text="Compare with a snapshot file…" Click="Report_Compare" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Save snapshot as…" Click="Report_SaveSnapshot" />
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <CommandBar.SecondaryCommands>
+                    <AppBarButton Label="Columns">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE8A9;" /></AppBarButton.Icon>
+                        <AppBarButton.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <ToggleMenuFlyoutItem Text="% of parent" IsChecked="{x:Bind ViewModel.Prefs.ShowPercent, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="Size" IsChecked="{x:Bind ViewModel.Prefs.ShowSize, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="Change" IsChecked="{x:Bind ViewModel.Prefs.ShowChange, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="Files" IsChecked="{x:Bind ViewModel.Prefs.ShowFiles, Mode=TwoWay}" />
+                                <ToggleMenuFlyoutItem Text="Modified" IsChecked="{x:Bind ViewModel.Prefs.ShowModified, Mode=TwoWay}" />
+                            </MenuFlyout>
+                        </AppBarButton.Flyout>
+                    </AppBarButton>
+                    <AppBarToggleButton x:Name="WatchToggle" Label="Watch for changes" Click="WatchToggle_Click"
+                                        AutomationProperties.Name="Watch for changes"
+                                        ToolTipService.ToolTip="Auto-refresh scanned folders when files change on disk">
+                        <AppBarToggleButton.Icon><FontIcon x:Name="WatchIcon" Glyph="&#xE7B3;" /></AppBarToggleButton.Icon>
+                    </AppBarToggleButton>
+                </CommandBar.SecondaryCommands>
+            </CommandBar>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" HorizontalAlignment="Right">
                 <ToggleButton x:Name="McpToggle" Click="McpToggle_Click" Padding="8,5" MinHeight="32"
                               AutomationProperties.Name="AI agent (MCP)"
                               ToolTipService.ToolTip="In-app MCP server — lets an AI agent scan, read history, and check drive health (read-only)">

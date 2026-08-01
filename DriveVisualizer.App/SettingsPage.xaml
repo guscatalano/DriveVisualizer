@@ -29,7 +29,8 @@
         <StackPanel MaxWidth="760" Padding="24,12,24,32" Spacing="8" HorizontalAlignment="Center">
 
             <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,12">
-                <Button Click="Back_Click" Padding="8,6" ToolTipService.ToolTip="Back">
+                <Button Click="Back_Click" Padding="8,6" ToolTipService.ToolTip="Back"
+                        AutomationProperties.Name="Back">
                     <FontIcon x:Name="BackIcon" FontSize="14" />
                 </Button>
                 <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}" VerticalAlignment="Center" />

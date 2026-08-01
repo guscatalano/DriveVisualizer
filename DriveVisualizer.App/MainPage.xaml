@@ -137,6 +137,7 @@
                     </StackPanel>
                 </ToggleButton>
                 <Button x:Name="SettingsButton" Padding="9,6" VerticalAlignment="Center"
+                        AutomationProperties.Name="Settings"
                         Click="Settings_Click" ToolTipService.ToolTip="Settings">
                     <FontIcon x:Name="SettingsIcon" FontSize="15" />
                 </Button>

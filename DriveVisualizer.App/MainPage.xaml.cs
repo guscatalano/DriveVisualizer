@@ -872,18 +872,36 @@ public sealed partial class MainPage : Page
 
     private void Menu_Reveal(object sender, RoutedEventArgs e)
     {
-        if (RowFrom(sender)?.Node is { } node)
-            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{node.GetFullPath()}\"");
+        if (RowFrom(sender)?.Node is not { } node)
+        {
+            ViewModel.StatusText = "Nothing selected to show in Explorer.";
+            return;
+        }
+        string path = node.GetFullPath();
+        try
+        {
+            if (Interop.ShellFileOps.RevealInExplorer(path))
+                return;
+            // Shell API refused (deleted item, virtual path) — last resort spawn.
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusText = $"Could not open Explorer: {ex.Message}";
+        }
     }
 
     private void Menu_CopyPath(object sender, RoutedEventArgs e)
     {
-        if (RowFrom(sender)?.Node is { } node)
+        if (RowFrom(sender)?.Node is not { } node)
         {
-            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.SetText(node.GetFullPath());
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            ViewModel.StatusText = "Nothing selected to copy.";
+            return;
         }
+        string path = node.GetFullPath();
+        ViewModel.StatusText = Interop.ShellFileOps.SetClipboardText(path)
+            ? $"Copied: {path}"
+            : "Could not access the clipboard — try again in a moment.";
     }
 
     private async void Menu_Recycle(object sender, RoutedEventArgs e) =>

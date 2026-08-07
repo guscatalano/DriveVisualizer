@@ -5,7 +5,7 @@
   <Package
       Name="DriveVisualizer"
       Manufacturer="Gus Catalano"
-      Version="1.0.0"
+      Version="1.0.1"
       UpgradeCode="7f1c2f7e-9b1a-4c93-a2c4-d3b8e1c0aa42"
       Scope="perMachine"
       Compressed="yes">
